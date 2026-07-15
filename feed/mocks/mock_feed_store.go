@@ -113,6 +113,21 @@ func (mr *MockStoreMockRecorder) InsertPost(ctx, feedName, uri, cid any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertPost", reflect.TypeOf((*MockStore)(nil).InsertPost), ctx, feedName, uri, cid)
 }
 
+// PostExists mocks base method.
+func (m *MockStore) PostExists(ctx context.Context, feedName, uri string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PostExists", ctx, feedName, uri)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PostExists indicates an expected call of PostExists.
+func (mr *MockStoreMockRecorder) PostExists(ctx, feedName, uri any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostExists", reflect.TypeOf((*MockStore)(nil).PostExists), ctx, feedName, uri)
+}
+
 // UpsertCursor mocks base method.
 func (m *MockStore) UpsertCursor(ctx context.Context, service string, cursor int32) error {
 	m.ctrl.T.Helper()

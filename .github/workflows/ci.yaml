@@ -4,6 +4,9 @@ on:
     branches:
       - "**"
 
+env:
+  VERSION: "0.0.1"
+
 permissions:
   contents: read
   packages: write
@@ -57,5 +60,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: VERSION=${{ env.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

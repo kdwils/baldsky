@@ -58,6 +58,7 @@ type Store interface {
 	GetFeedPage(ctx context.Context, feedName string, limit int, cursor *string) (FeedPage, error)
 	GetCursor(ctx context.Context, service string) (int32, error)
 	UpsertCursor(ctx context.Context, service string, cursor int32) error
+	PostExists(ctx context.Context, feedName, uri string) (bool, error)
 }
 
 type FeedPage struct {
@@ -250,6 +251,13 @@ func (s *Service) UpsertCursor(ctx context.Context, service string, cursor int32
 	return s.q.UpsertCursor(ctx, gen.UpsertCursorParams{
 		Service: service,
 		Cursor:  cursor,
+	})
+}
+
+func (s *Service) PostExists(ctx context.Context, feedName, uri string) (bool, error) {
+	return s.q.GetPostExists(ctx, gen.GetPostExistsParams{
+		FeedName: feedName,
+		Uri:      uri,
 	})
 }
 

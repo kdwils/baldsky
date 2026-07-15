@@ -17,7 +17,12 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/kdwils/baldsky/logger"
+	"github.com/kdwils/baldsky/version"
 )
+
+func BuildUserAgent(name, url string) string {
+	return name + "/" + version.Version + " (+" + url + ")"
+}
 
 //go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
 
@@ -28,6 +33,7 @@ type Dialer interface {
 type PipelineStore interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
 	DeletePosts(ctx context.Context, uris []string) error
+	PostExists(ctx context.Context, feedName, uri string) (bool, error)
 }
 
 type CursorStore interface {
@@ -93,15 +99,17 @@ type Subscription struct {
 	service        string
 	cursorStore    CursorStore
 	reconnectDelay time.Duration
+	userAgent      string
 }
 
-func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, reconnectDelay time.Duration) *Subscription {
+func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, reconnectDelay time.Duration, userAgent string) *Subscription {
 	return &Subscription{
 		pipelines:      pipelines,
 		dialer:         dialer,
 		service:        service,
 		cursorStore:    cursorStore,
 		reconnectDelay: reconnectDelay,
+		userAgent:      userAgent,
 	}
 }
 
@@ -146,10 +154,11 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	for i, p := range s.pipelines {
 		names[i] = p.Name
 	}
+
 	log.Info("connecting to firehose", "url", u.String(), "pipelines", names)
 
 	firehoseConn, _, err := s.dialer.DialContext(ctx, u.String(), http.Header{
-		"User-Agent": []string{"baldsky/0.1"},
+		"User-Agent": []string{s.userAgent},
 	})
 	if err != nil {
 		return fmt.Errorf("dialing firehose: %w", err)
@@ -194,8 +203,6 @@ func (s *Subscription) handleCommit(ctx context.Context, evt *comatproto.SyncSub
 		return nil
 	}
 
-	var postsToDelete []string
-
 	for _, op := range evt.Ops {
 		if !strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
 			log.Debug("skipping non-post operation", "path", op.Path, "action", op.Action)
@@ -204,59 +211,13 @@ func (s *Subscription) handleCommit(ctx context.Context, evt *comatproto.SyncSub
 
 		uri := buildURI(evt.Repo, op.Path)
 
-		if op.Action == "delete" {
-			postsToDelete = append(postsToDelete, uri)
-			log.Debug("queued post for deletion", "uri", uri)
-			continue
-		}
-
-		if op.Action != "create" {
+		switch op.Action {
+		case "delete":
+			s.handleDelete(ctx, uri)
+		case "create":
+			s.handleCreate(ctx, rr, evt.Repo, uri, op)
+		default:
 			log.Debug("skipping unsupported action", "action", op.Action, "path", op.Path)
-			continue
-		}
-
-		_, rec, err := rr.GetRecord(ctx, op.Path)
-		if err != nil {
-			log.Warn("failed to get record", "path", op.Path, "err", err)
-			continue
-		}
-
-		post, ok := rec.(*bsky.FeedPost)
-		if !ok {
-			log.Debug("record is not a feed post", "path", op.Path)
-			continue
-		}
-
-		for i := range s.pipelines {
-			p := &s.pipelines[i]
-
-			if _, blocked := p.blockedDIDs[evt.Repo]; blocked {
-				continue
-			}
-
-			if p.requireMedia && post.Embed == nil {
-				continue
-			}
-
-			if !p.matches(post.Text) {
-				log.Debug("post does not match pipeline", "pipeline", p.Name, "uri", uri)
-				continue
-			}
-
-			log.Info("inserting post", "pipeline", p.Name, "uri", uri)
-			if err := p.Store.InsertPost(ctx, p.Name, uri, op.Cid.String()); err != nil {
-				log.Warn("failed to insert post", "pipeline", p.Name, "uri", uri, "err", err)
-			}
-		}
-	}
-
-	if len(postsToDelete) > 0 {
-		log.Debug("deleting posts", "count", len(postsToDelete))
-		for i := range s.pipelines {
-			p := &s.pipelines[i]
-			if err := p.Store.DeletePosts(ctx, postsToDelete); err != nil {
-				log.Warn("failed to delete posts", "pipeline", p.Name, "err", err)
-			}
 		}
 	}
 
@@ -267,6 +228,69 @@ func (s *Subscription) handleCommit(ctx context.Context, evt *comatproto.SyncSub
 	log.Debug("cursor updated", "seq", evt.Seq)
 
 	return nil
+}
+
+func (s *Subscription) handleDelete(ctx context.Context, uri string) {
+	log := logger.FromContext(ctx)
+	log.Debug("deleting post", "uri", uri)
+	for i := range s.pipelines {
+		p := &s.pipelines[i]
+		if err := p.Store.DeletePosts(ctx, []string{uri}); err != nil {
+			log.Warn("failed to delete post", "pipeline", p.Name, "uri", uri, "err", err)
+		}
+	}
+}
+
+func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, uri string, op *comatproto.SyncSubscribeRepos_RepoOp) {
+	log := logger.FromContext(ctx)
+
+	_, rec, err := rr.GetRecord(ctx, op.Path)
+	if err != nil {
+		log.Warn("failed to get record", "path", op.Path, "err", err)
+		return
+	}
+
+	post, ok := rec.(*bsky.FeedPost)
+	if !ok {
+		log.Debug("record is not a feed post", "path", op.Path)
+		return
+	}
+
+	for i := range s.pipelines {
+		p := &s.pipelines[i]
+
+		if !p.shouldInsert(ctx, actor, post) {
+			continue
+		}
+
+		log.Info("inserting post", "pipeline", p.Name, "uri", uri)
+		if err := p.Store.InsertPost(ctx, p.Name, uri, op.Cid.String()); err != nil {
+			log.Warn("failed to insert post", "pipeline", p.Name, "uri", uri, "err", err)
+		}
+	}
+}
+
+func (p *Pipeline) shouldInsert(ctx context.Context, actor string, post *bsky.FeedPost) bool {
+	if _, blocked := p.blockedDIDs[actor]; blocked {
+		return false
+	}
+
+	if p.requireMedia && post.Embed == nil {
+		return false
+	}
+
+	if !p.matches(post.Text) {
+		if post.Reply == nil || post.Reply.Parent == nil {
+			return false
+		}
+
+		ok, err := p.Store.PostExists(ctx, p.Name, post.Reply.Parent.Uri)
+		if err != nil || !ok {
+			return false
+		}
+	}
+
+	return true
 }
 
 func buildURI(repo, path string) string {

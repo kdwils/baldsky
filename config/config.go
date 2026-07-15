@@ -22,6 +22,8 @@ type ServerConfig struct {
 	PublisherDID string `mapstructure:"publisher_did"`
 	DIDContext   string `mapstructure:"did_context"`
 	ServiceID    string `mapstructure:"service_id"`
+	UserAgent    string `mapstructure:"user_agent"`
+	UserAgentURL string `mapstructure:"user_agent_url"`
 }
 
 type DatabaseConfig struct {

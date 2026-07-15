@@ -41,32 +41,32 @@ func (m *MockFeedService) EXPECT() *MockFeedServiceMockRecorder {
 	return m.recorder
 }
 
-// DIDDocument mocks base method.
-func (m *MockFeedService) DIDDocument() feed.DIDDocument {
+// GetDIDDocument mocks base method.
+func (m *MockFeedService) GetDIDDocument() feed.DIDDocument {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DIDDocument")
+	ret := m.ctrl.Call(m, "GetDIDDocument")
 	ret0, _ := ret[0].(feed.DIDDocument)
 	return ret0
 }
 
-// DIDDocument indicates an expected call of DIDDocument.
-func (mr *MockFeedServiceMockRecorder) DIDDocument() *gomock.Call {
+// GetDIDDocument indicates an expected call of GetDIDDocument.
+func (mr *MockFeedServiceMockRecorder) GetDIDDocument() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DIDDocument", reflect.TypeOf((*MockFeedService)(nil).DIDDocument))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDIDDocument", reflect.TypeOf((*MockFeedService)(nil).GetDIDDocument))
 }
 
-// DescribeFeed mocks base method.
-func (m *MockFeedService) DescribeFeed() feed.FeedDescription {
+// GetFeedDescription mocks base method.
+func (m *MockFeedService) GetFeedDescription() feed.FeedDescription {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DescribeFeed")
+	ret := m.ctrl.Call(m, "GetFeedDescription")
 	ret0, _ := ret[0].(feed.FeedDescription)
 	return ret0
 }
 
-// DescribeFeed indicates an expected call of DescribeFeed.
-func (mr *MockFeedServiceMockRecorder) DescribeFeed() *gomock.Call {
+// GetFeedDescription indicates an expected call of GetFeedDescription.
+func (mr *MockFeedServiceMockRecorder) GetFeedDescription() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeFeed", reflect.TypeOf((*MockFeedService)(nil).DescribeFeed))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedDescription", reflect.TypeOf((*MockFeedService)(nil).GetFeedDescription))
 }
 
 // GetFeedPage mocks base method.

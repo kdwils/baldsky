@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -82,6 +83,10 @@ var serveCmd = &cobra.Command{
 			))
 		}
 
+		if cfg.Server.UserAgent == "" {
+			return fmt.Errorf("user_agent is required")
+		}
+
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
@@ -93,6 +98,7 @@ var serveCmd = &cobra.Command{
 			websocket.DefaultDialer,
 			cfg.Subscription.Endpoint,
 			cfg.Subscription.ReconnectDelay,
+			subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
 		).Listen(ctx)
 
 		srv := server.New(cfg.Server.Port, log, feedSvc)

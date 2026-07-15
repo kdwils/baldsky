@@ -83,6 +83,25 @@ func (q *Queries) GetFeedPage(ctx context.Context, arg GetFeedPageParams) ([]Get
 	return items, nil
 }
 
+const getPostExists = `-- name: GetPostExists :one
+SELECT EXISTS(
+  SELECT 1 FROM post
+  WHERE uri = $1 AND feed_name = $2
+)
+`
+
+type GetPostExistsParams struct {
+	Uri      string `json:"uri"`
+	FeedName string `json:"feed_name"`
+}
+
+func (q *Queries) GetPostExists(ctx context.Context, arg GetPostExistsParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, getPostExists, arg.Uri, arg.FeedName)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertPost = `-- name: InsertPost :exec
 INSERT INTO post (uri, cid, indexed_at, feed_name)
 VALUES ($1, $2, $3, $4)

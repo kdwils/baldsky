@@ -12,6 +12,7 @@ type Querier interface {
 	DeletePost(ctx context.Context, uri string) error
 	GetCursor(ctx context.Context, service string) (int32, error)
 	GetFeedPage(ctx context.Context, arg GetFeedPageParams) ([]GetFeedPageRow, error)
+	GetPostExists(ctx context.Context, arg GetPostExistsParams) (bool, error)
 	InsertPost(ctx context.Context, arg InsertPostParams) error
 	UpsertCursor(ctx context.Context, arg UpsertCursorParams) error
 }
