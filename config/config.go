@@ -36,16 +36,21 @@ type PipelineConfig struct {
 	Description     string   `mapstructure:"description"`
 	Keywords        []string `mapstructure:"keywords"`
 	ExcludeKeywords []string `mapstructure:"exclude_keywords"`
+	ContextKeywords []string `mapstructure:"context_keywords"`
+	ContextWords    []string `mapstructure:"context_words"`
 	RequireMedia    bool     `mapstructure:"require_media"`
 	BlockDIDs       []string `mapstructure:"block_dids"`
 	Enabled         bool     `mapstructure:"enabled"`
 	IgnoreBots      bool     `mapstructure:"ignore_bots"`
 	CollectionName  string   `mapstructure:"collection_name"`
+	Languages       []string `mapstructure:"languages"`
 }
 
 type SubscriptionConfig struct {
 	Endpoint       string        `mapstructure:"endpoint"`
 	ReconnectDelay time.Duration `mapstructure:"reconnect_delay"`
+	Concurrency    int           `mapstructure:"concurrency"`
+	QueueSize      int           `mapstructure:"queue_size"`
 }
 
 func New(v *viper.Viper) (Config, error) {

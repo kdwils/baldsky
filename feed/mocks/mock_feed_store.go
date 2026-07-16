@@ -41,20 +41,6 @@ func (m *MockStore) EXPECT() *MockStoreMockRecorder {
 	return m.recorder
 }
 
-// DeletePost mocks base method.
-func (m *MockStore) DeletePost(ctx context.Context, uri string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeletePost", ctx, uri)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeletePost indicates an expected call of DeletePost.
-func (mr *MockStoreMockRecorder) DeletePost(ctx, uri any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePost", reflect.TypeOf((*MockStore)(nil).DeletePost), ctx, uri)
-}
-
 // DeletePosts mocks base method.
 func (m *MockStore) DeletePosts(ctx context.Context, uris []string) error {
 	m.ctrl.T.Helper()
@@ -111,21 +97,6 @@ func (m *MockStore) InsertPost(ctx context.Context, feedName, uri, cid string) e
 func (mr *MockStoreMockRecorder) InsertPost(ctx, feedName, uri, cid any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertPost", reflect.TypeOf((*MockStore)(nil).InsertPost), ctx, feedName, uri, cid)
-}
-
-// PostExists mocks base method.
-func (m *MockStore) PostExists(ctx context.Context, feedName, uri string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PostExists", ctx, feedName, uri)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// PostExists indicates an expected call of PostExists.
-func (mr *MockStoreMockRecorder) PostExists(ctx, feedName, uri any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostExists", reflect.TypeOf((*MockStore)(nil).PostExists), ctx, feedName, uri)
 }
 
 // UpsertCursor mocks base method.

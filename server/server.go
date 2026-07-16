@@ -52,7 +52,6 @@ func (s *Server) Run(ctx context.Context) error {
 		handlers.AllowedOrigins([]string{"*"}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodOptions}),
 		handlers.AllowedHeaders([]string{"*"}),
-		handlers.AllowCredentials(),
 		handlers.MaxAge(3600),
 	)(r)
 
@@ -81,8 +80,8 @@ func (s *Server) Run(ctx context.Context) error {
 func withLogger(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log = log.With("path", r.URL.Path)
-			ctx := logger.WithContext(r.Context(), log)
+			reqLog := log.With("path", r.URL.Path)
+			ctx := logger.WithContext(r.Context(), reqLog)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -91,16 +90,19 @@ func withLogger(log *slog.Logger) func(http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("failed to encode json response", "err", err)
+	}
 }
 
 func (s *Server) handleDIDDocument() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(s.svc.GetDIDDocument().ID, s.svc.Hostname()) {
+		doc := s.svc.GetDIDDocument()
+		if !strings.HasSuffix(doc.ID, s.svc.Hostname()) {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, http.StatusOK, s.svc.GetDIDDocument())
+		writeJSON(w, http.StatusOK, doc)
 	}
 }
 
@@ -126,8 +128,10 @@ func (s *Server) handleGetFeedSkeleton() http.HandlerFunc {
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
 		resp, err := s.svc.GetFeedPage(
-			r.Context(),
+			ctx,
 			feedParam,
 			r.URL.Query().Get("limit"),
 			r.URL.Query().Get("cursor"),

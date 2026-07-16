@@ -1,0 +1,1 @@
+ALTER TABLE sub_state ALTER COLUMN cursor TYPE BIGINT;

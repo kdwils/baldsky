@@ -34,7 +34,7 @@ const getFeedPage = `-- name: GetFeedPage :many
 SELECT uri, cid, indexed_at FROM post
 WHERE feed_name = $1
 AND (
-    $2 IS NULL
+    $2::text IS NULL
     OR indexed_at < $2
     OR (indexed_at = $2 AND cid < $3)
 )
@@ -44,7 +44,7 @@ LIMIT $4
 
 type GetFeedPageParams struct {
 	FeedName        string         `json:"feed_name"`
-	CursorIndexedAt interface{}    `json:"cursor_indexed_at"`
+	CursorIndexedAt sql.NullString `json:"cursor_indexed_at"`
 	CursorCid       sql.NullString `json:"cursor_cid"`
 	Limit           int32          `json:"limit"`
 }

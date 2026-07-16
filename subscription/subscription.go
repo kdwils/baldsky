@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ func BuildUserAgent(name, url string) string {
 }
 
 //go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
 
 type Dialer interface {
 	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
@@ -33,7 +36,6 @@ type Dialer interface {
 type PipelineStore interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
 	DeletePosts(ctx context.Context, uris []string) error
-	PostExists(ctx context.Context, feedName, uri string) (bool, error)
 }
 
 type CursorStore interface {
@@ -42,15 +44,22 @@ type CursorStore interface {
 }
 
 type Pipeline struct {
-	Name            string
-	keywords        []string
-	excludeKeywords []string
-	blockedDIDs     map[string]struct{}
-	requireMedia    bool
-	Store           PipelineStore
+	Name                   string
+	keywords               []string
+	excludeKeywords        []string
+	contextKeywords        []string
+	contextWords           []string
+	keywordRegexps         []*regexp.Regexp
+	excludeRegexps         []*regexp.Regexp
+	contextKeywordRegexps  []*regexp.Regexp
+	contextWordRegexps     []*regexp.Regexp
+	languages              map[string]struct{}
+	blockedDIDs            map[string]struct{}
+	requireMedia           bool
+	Store                  PipelineStore
 }
 
-func NewPipeline(name string, keywords, excludeKeywords, blockDIDs []string, requireMedia bool, store PipelineStore) Pipeline {
+func NewPipeline(name string, keywords, excludeKeywords, contextKeywords, contextWords, blockDIDs, languages []string, requireMedia bool, store PipelineStore) (Pipeline, error) {
 	blocked := make(map[string]struct{}, len(blockDIDs))
 	for _, did := range blockDIDs {
 		blocked[did] = struct{}{}
@@ -63,34 +72,103 @@ func NewPipeline(name string, keywords, excludeKeywords, blockDIDs []string, req
 	for i, kw := range excludeKeywords {
 		lowerExclude[i] = strings.ToLower(kw)
 	}
-	return Pipeline{
-		Name:            name,
-		keywords:        lowerKW,
-		excludeKeywords: lowerExclude,
-		blockedDIDs:     blocked,
-		requireMedia:    requireMedia,
-		Store:           store,
+	kwRegexps := make([]*regexp.Regexp, len(lowerKW))
+	for i, kw := range lowerKW {
+		re, err := regexp.Compile(`(?:^|[^a-zA-Z0-9-])` + regexp.QuoteMeta(kw) + `(?:[^a-zA-Z0-9-]|$)`)
+		if err != nil {
+			return Pipeline{}, fmt.Errorf("compiling keyword regexp %q: %w", kw, err)
+		}
+		kwRegexps[i] = re
 	}
+	excludeRegexps := make([]*regexp.Regexp, len(lowerExclude))
+	for i, kw := range lowerExclude {
+		re, err := regexp.Compile(`(?:^|[^a-zA-Z0-9-])` + regexp.QuoteMeta(kw) + `(?:[^a-zA-Z0-9-]|$)`)
+		if err != nil {
+			return Pipeline{}, fmt.Errorf("compiling exclude keyword regexp %q: %w", kw, err)
+		}
+		excludeRegexps[i] = re
+	}
+	lowerCtxKW := make([]string, len(contextKeywords))
+	for i, kw := range contextKeywords {
+		lowerCtxKW[i] = strings.ToLower(kw)
+	}
+	ctxKWRegexps := make([]*regexp.Regexp, len(lowerCtxKW))
+	for i, kw := range lowerCtxKW {
+		re, err := regexp.Compile(`(?:^|[^a-zA-Z0-9-])` + regexp.QuoteMeta(kw) + `(?:[^a-zA-Z0-9-]|$)`)
+		if err != nil {
+			return Pipeline{}, fmt.Errorf("compiling context keyword regexp %q: %w", kw, err)
+		}
+		ctxKWRegexps[i] = re
+	}
+	lowerCtxW := make([]string, len(contextWords))
+	for i, w := range contextWords {
+		lowerCtxW[i] = strings.ToLower(w)
+	}
+	ctxWRegexps := make([]*regexp.Regexp, len(lowerCtxW))
+	for i, w := range lowerCtxW {
+		re, err := regexp.Compile(`(?:^|[^a-zA-Z0-9-])` + regexp.QuoteMeta(w) + `(?:[^a-zA-Z0-9-]|$)`)
+		if err != nil {
+			return Pipeline{}, fmt.Errorf("compiling context word regexp %q: %w", w, err)
+		}
+		ctxWRegexps[i] = re
+	}
+	langs := make(map[string]struct{}, len(languages))
+	for _, l := range languages {
+		langs[strings.ToLower(l)] = struct{}{}
+	}
+	return Pipeline{
+		Name:                  name,
+		keywords:              lowerKW,
+		excludeKeywords:       lowerExclude,
+		contextKeywords:       lowerCtxKW,
+		contextWords:          lowerCtxW,
+		keywordRegexps:        kwRegexps,
+		excludeRegexps:        excludeRegexps,
+		contextKeywordRegexps: ctxKWRegexps,
+		contextWordRegexps:    ctxWRegexps,
+		languages:             langs,
+		blockedDIDs:           blocked,
+		requireMedia:          requireMedia,
+		Store:                 store,
+	}, nil
 }
 
 func (p *Pipeline) matches(text string) bool {
 	lower := strings.ToLower(text)
-	matched := false
-	for _, kw := range p.keywords {
-		if strings.Contains(lower, kw) {
-			matched = true
-			break
+
+	for _, re := range p.keywordRegexps {
+		if re.MatchString(lower) {
+			for _, ex := range p.excludeRegexps {
+				if ex.MatchString(lower) {
+					return false
+				}
+			}
+			return true
 		}
 	}
-	if !matched {
-		return false
-	}
-	for _, kw := range p.excludeKeywords {
-		if strings.Contains(lower, kw) {
-			return false
+
+	for _, re := range p.contextKeywordRegexps {
+		if re.MatchString(lower) {
+			hasContext := false
+			for _, cw := range p.contextWordRegexps {
+				if cw.MatchString(lower) {
+					hasContext = true
+					break
+				}
+			}
+			if !hasContext {
+				continue
+			}
+			for _, ex := range p.excludeRegexps {
+				if ex.MatchString(lower) {
+					return false
+				}
+			}
+			return true
 		}
 	}
-	return true
+
+	return false
 }
 
 type Subscription struct {
@@ -98,16 +176,20 @@ type Subscription struct {
 	dialer         Dialer
 	service        string
 	cursorStore    CursorStore
+	concurrency    int
+	queueSize      int
 	reconnectDelay time.Duration
 	userAgent      string
 }
 
-func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, reconnectDelay time.Duration, userAgent string) *Subscription {
+func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, concurrency, queueSize int, reconnectDelay time.Duration, userAgent string) *Subscription {
 	return &Subscription{
 		pipelines:      pipelines,
 		dialer:         dialer,
 		service:        service,
 		cursorStore:    cursorStore,
+		concurrency:    concurrency,
+		queueSize:      queueSize,
 		reconnectDelay: reconnectDelay,
 		userAgent:      userAgent,
 	}
@@ -172,8 +254,8 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	}
 
 	sched := parallel.NewScheduler(
-		4,
-		1000,
+		s.concurrency,
+		s.queueSize,
 		s.service,
 		rsc.EventHandler,
 	)
@@ -259,7 +341,7 @@ func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, u
 	for i := range s.pipelines {
 		p := &s.pipelines[i]
 
-		if !p.shouldInsert(ctx, actor, post) {
+		if !p.shouldInsert(actor, post) {
 			continue
 		}
 
@@ -270,7 +352,7 @@ func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, u
 	}
 }
 
-func (p *Pipeline) shouldInsert(ctx context.Context, actor string, post *bsky.FeedPost) bool {
+func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
 	if _, blocked := p.blockedDIDs[actor]; blocked {
 		return false
 	}
@@ -279,18 +361,20 @@ func (p *Pipeline) shouldInsert(ctx context.Context, actor string, post *bsky.Fe
 		return false
 	}
 
-	if !p.matches(post.Text) {
-		if post.Reply == nil || post.Reply.Parent == nil {
-			return false
+	if len(p.languages) > 0 {
+		matched := false
+		for _, lang := range post.Langs {
+			if _, ok := p.languages[strings.ToLower(lang)]; ok {
+				matched = true
+				break
+			}
 		}
-
-		ok, err := p.Store.PostExists(ctx, p.Name, post.Reply.Parent.Uri)
-		if err != nil || !ok {
+		if !matched {
 			return false
 		}
 	}
 
-	return true
+	return p.matches(post.Text)
 }
 
 func buildURI(repo, path string) string {

@@ -56,6 +56,8 @@ func initConfig() {
 	viper.SetDefault("feed.collection_name", "app.bsky.feed.generator")
 	viper.SetDefault("subscription.endpoint", "wss://bsky.network")
 	viper.SetDefault("subscription.reconnect_delay", "5s")
+	viper.SetDefault("subscription.concurrency", 4)
+	viper.SetDefault("subscription.queue_size", 1000)
 
 	viper.SetEnvPrefix("BALDSKY")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

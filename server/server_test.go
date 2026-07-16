@@ -1,0 +1,378 @@
+package server
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/kdwils/baldsky/feed"
+	"github.com/kdwils/baldsky/logger"
+	"github.com/kdwils/baldsky/server/mocks"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+)
+
+const (
+	testHostname = "https://test.example.com"
+	testDID      = "did:web:test.example.com"
+)
+
+func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
+	svc := mocks.NewMockFeedService(ctrl)
+	srv := New(8080, slog.Default(), svc)
+	return srv, svc
+}
+
+func TestNew(t *testing.T) {
+	t.Run("creates server with all fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		log := slog.Default()
+
+		got := New(9090, log, svc)
+		want := &Server{
+			port:   9090,
+			logger: log,
+			svc:    svc,
+		}
+		assert.Equal(t, want, got)
+	})
+}
+
+func TestHandleHealth(t *testing.T) {
+	t.Run("returns ok", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleHealth()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "ok", body["status"])
+	})
+}
+
+func TestHandleDIDDocument(t *testing.T) {
+	t.Run("valid hostname returns document", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetDIDDocument().Return(feed.DIDDocument{
+			Context: []string{"https://www.w3.org/ns/did/v1"},
+			ID:      "did:web:test.example.com",
+			Service: []feed.DIDServiceEntry{
+				{
+					ID:              "#bsky_fg",
+					Type:            "BskyFeedGenerator",
+					ServiceEndpoint: "test.example.com",
+				},
+			},
+		})
+		svc.EXPECT().Hostname().Return("test.example.com")
+
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/did.json", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleDIDDocument()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got feed.DIDDocument
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		want := feed.DIDDocument{
+			Context: []string{"https://www.w3.org/ns/did/v1"},
+			ID:      "did:web:test.example.com",
+			Service: []feed.DIDServiceEntry{
+				{
+					ID:              "#bsky_fg",
+					Type:            "BskyFeedGenerator",
+					ServiceEndpoint: "test.example.com",
+				},
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("mismatched hostname returns 404", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetDIDDocument().Return(feed.DIDDocument{
+			ID: "did:web:wrong.com",
+		})
+		svc.EXPECT().Hostname().Return("test.example.com")
+
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/did.json", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleDIDDocument()(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestHandleDescribeFeedGenerator(t *testing.T) {
+	t.Run("returns feed description", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedDescription().Return(feed.FeedDescription{
+			DID: testDID,
+			Feeds: []feed.FeedDescriptionEntry{
+				{
+					URI:         "at://did:web:test.example.com/app.bsky.feed.generator/test-feed",
+					DisplayName: "Test Feed",
+					Description: "A test feed",
+				},
+			},
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.describeFeedGenerator", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleDescribeFeedGenerator()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got feed.FeedDescription
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		want := feed.FeedDescription{
+			DID: testDID,
+			Feeds: []feed.FeedDescriptionEntry{
+				{
+					URI:         "at://did:web:test.example.com/app.bsky.feed.generator/test-feed",
+					DisplayName: "Test Feed",
+					Description: "A test feed",
+				},
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("empty feeds", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedDescription().Return(feed.FeedDescription{
+			DID:   testDID,
+			Feeds: []feed.FeedDescriptionEntry{},
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.describeFeedGenerator", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleDescribeFeedGenerator()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got feed.FeedDescription
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, testDID, got.DID)
+		assert.Empty(t, got.Feeds)
+	})
+}
+
+func TestHandleGetFeedSkeleton(t *testing.T) {
+	t.Run("missing feed parameter returns 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "missing feed parameter", body["error"])
+	})
+
+	t.Run("unknown feed returns 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:wrong.com/app.bsky.feed.generator/nonexistent", "", "").
+			Return(feed.FeedResponse{}, feed.ErrUnknownFeed)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:wrong.com/app.bsky.feed.generator/nonexistent", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "UnknownFeed", body["error"])
+	})
+
+	t.Run("invalid cursor returns 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:test.example.com/app.bsky.feed.generator/test-feed", "", "bad-cursor").
+			Return(feed.FeedResponse{}, feed.ErrInvalidCursor)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:test.example.com/app.bsky.feed.generator/test-feed&cursor=bad-cursor", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "invalid cursor format", body["error"])
+	})
+
+	t.Run("internal error returns 500", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:test.example.com/app.bsky.feed.generator/test-feed", "", "").
+			Return(feed.FeedResponse{}, errors.New("db connection lost"))
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:test.example.com/app.bsky.feed.generator/test-feed", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "internal server error", body["error"])
+	})
+
+	t.Run("successful response with posts", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		cursor := "2024-01-01T00:00:00Z::bafycid"
+		resp := feed.FeedResponse{
+			Feed: []feed.FeedItem{
+				{Post: "at://did:plc:actor1/app.bsky.feed.post/abc123"},
+				{Post: "at://did:plc:actor2/app.bsky.feed.post/def456"},
+			},
+			Cursor: &cursor,
+		}
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:test.example.com/app.bsky.feed.generator/test-feed", "", "").
+			Return(resp, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:test.example.com/app.bsky.feed.generator/test-feed", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+		var got feed.FeedResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, resp, got)
+	})
+
+	t.Run("passes limit and cursor to service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:test.example.com/app.bsky.feed.generator/test-feed", "25", "2024-01-01T00:00:00Z::bafycid").
+			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:test.example.com/app.bsky.feed.generator/test-feed&limit=25&cursor=2024-01-01T00:00:00Z::bafycid", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("empty feed response", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:web:test.example.com/app.bsky.feed.generator/test-feed", "", "").
+			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:web:test.example.com/app.bsky.feed.generator/test-feed", nil)
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedSkeleton()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got feed.FeedResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, feed.FeedResponse{Feed: []feed.FeedItem{}}, got)
+	})
+}
+
+func TestWithLogger(t *testing.T) {
+	t.Run("adds logger to context", func(t *testing.T) {
+		log := slog.Default()
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := logger.FromContext(r.Context())
+			assert.NotNil(t, got)
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := withLogger(log)(inner)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+func TestWriteJSON(t *testing.T) {
+	t.Run("writes json response", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		writeJSON(w, http.StatusOK, map[string]string{"key": "value"})
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "value", body["key"])
+	})
+
+	t.Run("writes error status", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "not found", body["error"])
+	})
+}

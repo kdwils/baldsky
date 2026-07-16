@@ -53,12 +53,10 @@ type FeedResponse struct {
 
 type Store interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
-	DeletePost(ctx context.Context, uri string) error
 	DeletePosts(ctx context.Context, uris []string) error
 	GetFeedPage(ctx context.Context, feedName string, limit int, cursor *string) (FeedPage, error)
 	GetCursor(ctx context.Context, service string) (int32, error)
 	UpsertCursor(ctx context.Context, service string, cursor int32) error
-	PostExists(ctx context.Context, feedName, uri string) (bool, error)
 }
 
 type FeedPage struct {
@@ -148,10 +146,6 @@ func (s *Service) InsertPost(ctx context.Context, feedName, uri, cid string) err
 	})
 }
 
-func (s *Service) DeletePost(ctx context.Context, uri string) error {
-	return s.q.DeletePost(ctx, uri)
-}
-
 func (s *Service) DeletePosts(ctx context.Context, uris []string) error {
 	for _, uri := range uris {
 		if err := s.q.DeletePost(ctx, uri); err != nil {
@@ -200,7 +194,7 @@ func (s *Service) GetFeedPage(ctx context.Context, feedURI, limitStr string, cur
 
 	params := gen.GetFeedPageParams{
 		FeedName:        rkey,
-		CursorIndexedAt: nil,
+		CursorIndexedAt: sql.NullString{},
 		CursorCid:       sql.NullString{},
 		Limit:           int32(limit),
 	}
@@ -210,7 +204,7 @@ func (s *Service) GetFeedPage(ctx context.Context, feedURI, limitStr string, cur
 		if err != nil {
 			return FeedResponse{}, ErrInvalidCursor
 		}
-		params.CursorIndexedAt = indexedAt
+		params.CursorIndexedAt = sql.NullString{String: indexedAt, Valid: true}
 		params.CursorCid = sql.NullString{String: cid, Valid: true}
 	}
 
@@ -251,13 +245,6 @@ func (s *Service) UpsertCursor(ctx context.Context, service string, cursor int32
 	return s.q.UpsertCursor(ctx, gen.UpsertCursorParams{
 		Service: service,
 		Cursor:  cursor,
-	})
-}
-
-func (s *Service) PostExists(ctx context.Context, feedName, uri string) (bool, error) {
-	return s.q.GetPostExists(ctx, gen.GetPostExistsParams{
-		FeedName: feedName,
-		Uri:      uri,
 	})
 }
 

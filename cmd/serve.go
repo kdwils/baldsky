@@ -73,14 +73,21 @@ var serveCmd = &cobra.Command{
 			if !p.Enabled {
 				continue
 			}
-			pipelines = append(pipelines, subscription.NewPipeline(
+			pipeline, err := subscription.NewPipeline(
 				p.ShortName,
 				p.Keywords,
 				p.ExcludeKeywords,
+				p.ContextKeywords,
+				p.ContextWords,
 				p.BlockDIDs,
+				p.Languages,
 				p.RequireMedia,
 				feedSvc,
-			))
+			)
+			if err != nil {
+				return err
+			}
+			pipelines = append(pipelines, pipeline)
 		}
 
 		if cfg.Server.UserAgent == "" {
@@ -97,6 +104,8 @@ var serveCmd = &cobra.Command{
 			feedSvc,
 			websocket.DefaultDialer,
 			cfg.Subscription.Endpoint,
+			cfg.Subscription.Concurrency,
+			cfg.Subscription.QueueSize,
 			cfg.Subscription.ReconnectDelay,
 			subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
 		).Listen(ctx)
