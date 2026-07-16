@@ -331,6 +331,34 @@ func TestShouldInsert(t *testing.T) {
 		assert.False(t, got)
 	})
 
+	t.Run("language filter passes post with no langs field", func(t *testing.T) {
+		p := Pipeline{
+			keywords:       []string{"bald"},
+			keywordRegexps: mustCompileRegexps([]string{"bald"}),
+			languages:      map[string]struct{}{"en": {}},
+		}
+		post := &bsky.FeedPost{
+			Text:  "I'm going bald",
+			Langs: nil,
+		}
+		got := p.shouldInsert("did:plc:actor1", post)
+		assert.True(t, got)
+	})
+
+	t.Run("language filter passes post with empty langs slice", func(t *testing.T) {
+		p := Pipeline{
+			keywords:       []string{"bald"},
+			keywordRegexps: mustCompileRegexps([]string{"bald"}),
+			languages:      map[string]struct{}{"en": {}},
+		}
+		post := &bsky.FeedPost{
+			Text:  "I'm going bald",
+			Langs: []string{},
+		}
+		got := p.shouldInsert("did:plc:actor1", post)
+		assert.True(t, got)
+	})
+
 	t.Run("empty languages allows all", func(t *testing.T) {
 		p := Pipeline{
 			keywords:       []string{"bald"},

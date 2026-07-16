@@ -370,7 +370,7 @@ func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
 		return false
 	}
 
-	if len(p.languages) > 0 {
+	if len(p.languages) > 0 && len(post.Langs) > 0 {
 		matched := false
 		for _, lang := range post.Langs {
 			if _, ok := p.languages[strings.ToLower(lang)]; ok {
