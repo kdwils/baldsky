@@ -40,8 +40,8 @@ type PipelineStore interface {
 }
 
 type CursorStore interface {
-	GetCursor(ctx context.Context, service string) (int32, error)
-	UpsertCursor(ctx context.Context, service string, cursor int32) error
+	GetCursor(ctx context.Context, service string) (int64, error)
+	UpsertCursor(ctx context.Context, service string, cursor int64) error
 }
 
 type Pipeline struct {
@@ -312,7 +312,7 @@ func (s *Subscription) handleCommit(ctx context.Context, evt *comatproto.SyncSub
 		}
 	}
 
-	if err := s.cursorStore.UpsertCursor(ctx, s.service, int32(evt.Seq)); err != nil {
+	if err := s.cursorStore.UpsertCursor(ctx, s.service, evt.Seq); err != nil {
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 

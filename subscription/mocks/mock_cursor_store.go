@@ -41,10 +41,10 @@ func (m *MockCursorStore) EXPECT() *MockCursorStoreMockRecorder {
 }
 
 // GetCursor mocks base method.
-func (m *MockCursorStore) GetCursor(ctx context.Context, service string) (int32, error) {
+func (m *MockCursorStore) GetCursor(ctx context.Context, service string) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCursor", ctx, service)
-	ret0, _ := ret[0].(int32)
+	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -56,7 +56,7 @@ func (mr *MockCursorStoreMockRecorder) GetCursor(ctx, service any) *gomock.Call 
 }
 
 // UpsertCursor mocks base method.
-func (m *MockCursorStore) UpsertCursor(ctx context.Context, service string, cursor int32) error {
+func (m *MockCursorStore) UpsertCursor(ctx context.Context, service string, cursor int64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertCursor", ctx, service, cursor)
 	ret0, _ := ret[0].(error)

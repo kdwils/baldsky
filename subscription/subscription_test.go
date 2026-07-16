@@ -592,7 +592,7 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int32(0), errors.New("cursor read failed"))
+		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), errors.New("cursor read failed"))
 		s := New(nil, cursorStore, nil, "wss://bsky.network", 4, 100, 5*time.Second, "test")
 		ctx := t.Context()
 
@@ -607,7 +607,7 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int32(0), nil)
+		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), nil)
 		dialer := mocks.NewMockDialer(ctrl)
 		dialer.EXPECT().DialContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil, errors.New("connection refused"))
 		s := New(nil, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "test")
@@ -624,7 +624,7 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int32(42), nil)
+		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(42), nil)
 		dialer := mocks.NewMockDialer(ctrl)
 		dialer.EXPECT().DialContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil, errors.New("expected dial error"))
 		s := New(nil, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "test")
@@ -640,7 +640,7 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		cursorStore.EXPECT().GetCursor(gomock.Any(), "://invalid-url").Return(int32(0), nil)
+		cursorStore.EXPECT().GetCursor(gomock.Any(), "://invalid-url").Return(int64(0), nil)
 		s := New(nil, cursorStore, nil, "://invalid-url", 4, 100, 5*time.Second, "test")
 		ctx := t.Context()
 
@@ -683,7 +683,7 @@ func TestSubscriptionListen(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int32(0), errors.New("no db"))
+		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), errors.New("no db"))
 		s := New(nil, cursorStore, nil, "wss://bsky.network", 4, 100, 5*time.Second, "test")
 
 		ctx, cancel := context.WithCancel(t.Context())

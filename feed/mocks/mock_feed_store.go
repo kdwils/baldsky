@@ -56,10 +56,10 @@ func (mr *MockStoreMockRecorder) DeletePosts(ctx, uris any) *gomock.Call {
 }
 
 // GetCursor mocks base method.
-func (m *MockStore) GetCursor(ctx context.Context, service string) (int32, error) {
+func (m *MockStore) GetCursor(ctx context.Context, service string) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCursor", ctx, service)
-	ret0, _ := ret[0].(int32)
+	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -100,7 +100,7 @@ func (mr *MockStoreMockRecorder) InsertPost(ctx, feedName, uri, cid any) *gomock
 }
 
 // UpsertCursor mocks base method.
-func (m *MockStore) UpsertCursor(ctx context.Context, service string, cursor int32) error {
+func (m *MockStore) UpsertCursor(ctx context.Context, service string, cursor int64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertCursor", ctx, service, cursor)
 	ret0, _ := ret[0].(error)

@@ -537,11 +537,11 @@ func TestGetCursor(t *testing.T) {
 		svc, q := newTestFeedService(ctrl)
 		ctx := context.Background()
 
-		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int32(42), nil)
+		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(42), nil)
 
 		got, err := svc.GetCursor(ctx, "bsky-appview")
 		require.NoError(t, err)
-		want := int32(42)
+		want := int64(42)
 		assert.Equal(t, want, got)
 	})
 
@@ -552,11 +552,11 @@ func TestGetCursor(t *testing.T) {
 		svc, q := newTestFeedService(ctrl)
 		ctx := context.Background()
 
-		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int32(0), sql.ErrNoRows)
+		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(0), sql.ErrNoRows)
 
 		got, err := svc.GetCursor(ctx, "bsky-appview")
 		require.NoError(t, err)
-		want := int32(0)
+		want := int64(0)
 		assert.Equal(t, want, got)
 	})
 
@@ -567,7 +567,7 @@ func TestGetCursor(t *testing.T) {
 		svc, q := newTestFeedService(ctrl)
 		ctx := context.Background()
 
-		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int32(0), errors.New("timeout"))
+		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(0), errors.New("timeout"))
 
 		_, err := svc.GetCursor(ctx, "bsky-appview")
 		require.Error(t, err)

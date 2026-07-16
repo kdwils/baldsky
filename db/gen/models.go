@@ -13,5 +13,5 @@ type Post struct {
 
 type SubState struct {
 	Service string `json:"service"`
-	Cursor  int32  `json:"cursor"`
+	Cursor  int64  `json:"cursor"`
 }

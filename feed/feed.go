@@ -13,6 +13,7 @@ import (
 )
 
 //go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_feed_store.go -package=mocks github.com/kdwils/baldsky/feed Store
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_querier.go -package=mocks github.com/kdwils/baldsky/db/gen Querier
 
 var (
 	ErrUnknownFeed   = errors.New("UnknownFeed")
@@ -55,8 +56,8 @@ type Store interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
 	DeletePosts(ctx context.Context, uris []string) error
 	GetFeedPage(ctx context.Context, feedName string, limit int, cursor *string) (FeedPage, error)
-	GetCursor(ctx context.Context, service string) (int32, error)
-	UpsertCursor(ctx context.Context, service string, cursor int32) error
+	GetCursor(ctx context.Context, service string) (int64, error)
+	UpsertCursor(ctx context.Context, service string, cursor int64) error
 }
 
 type FeedPage struct {
@@ -233,7 +234,7 @@ func (s *Service) GetFeedPage(ctx context.Context, feedURI, limitStr string, cur
 	}, nil
 }
 
-func (s *Service) GetCursor(ctx context.Context, service string) (int32, error) {
+func (s *Service) GetCursor(ctx context.Context, service string) (int64, error) {
 	cursor, err := s.q.GetCursor(ctx, service)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
@@ -241,7 +242,7 @@ func (s *Service) GetCursor(ctx context.Context, service string) (int32, error) 
 	return cursor, err
 }
 
-func (s *Service) UpsertCursor(ctx context.Context, service string, cursor int32) error {
+func (s *Service) UpsertCursor(ctx context.Context, service string, cursor int64) error {
 	return s.q.UpsertCursor(ctx, gen.UpsertCursorParams{
 		Service: service,
 		Cursor:  cursor,

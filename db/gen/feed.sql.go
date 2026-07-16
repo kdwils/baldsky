@@ -8,6 +8,8 @@ package gen
 import (
 	"context"
 	"database/sql"
+
+	"github.com/lib/pq"
 )
 
 const deletePost = `-- name: DeletePost :exec
@@ -19,13 +21,22 @@ func (q *Queries) DeletePost(ctx context.Context, uri string) error {
 	return err
 }
 
+const deletePosts = `-- name: DeletePosts :exec
+DELETE FROM post WHERE uri = ANY($1::text[])
+`
+
+func (q *Queries) DeletePosts(ctx context.Context, uris []string) error {
+	_, err := q.db.ExecContext(ctx, deletePosts, pq.Array(uris))
+	return err
+}
+
 const getCursor = `-- name: GetCursor :one
 SELECT cursor FROM sub_state WHERE service = $1
 `
 
-func (q *Queries) GetCursor(ctx context.Context, service string) (int32, error) {
+func (q *Queries) GetCursor(ctx context.Context, service string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, getCursor, service)
-	var cursor int32
+	var cursor int64
 	err := row.Scan(&cursor)
 	return cursor, err
 }
@@ -83,25 +94,6 @@ func (q *Queries) GetFeedPage(ctx context.Context, arg GetFeedPageParams) ([]Get
 	return items, nil
 }
 
-const getPostExists = `-- name: GetPostExists :one
-SELECT EXISTS(
-  SELECT 1 FROM post
-  WHERE uri = $1 AND feed_name = $2
-)
-`
-
-type GetPostExistsParams struct {
-	Uri      string `json:"uri"`
-	FeedName string `json:"feed_name"`
-}
-
-func (q *Queries) GetPostExists(ctx context.Context, arg GetPostExistsParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, getPostExists, arg.Uri, arg.FeedName)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const insertPost = `-- name: InsertPost :exec
 INSERT INTO post (uri, cid, indexed_at, feed_name)
 VALUES ($1, $2, $3, $4)
@@ -133,7 +125,7 @@ ON CONFLICT (service) DO UPDATE SET cursor = excluded.cursor
 
 type UpsertCursorParams struct {
 	Service string `json:"service"`
-	Cursor  int32  `json:"cursor"`
+	Cursor  int64  `json:"cursor"`
 }
 
 func (q *Queries) UpsertCursor(ctx context.Context, arg UpsertCursorParams) error {
