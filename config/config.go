@@ -27,7 +27,8 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	DSN string `mapstructure:"dsn"`
+	DSN            string        `mapstructure:"dsn"`
+	ReconnectDelay time.Duration `mapstructure:"reconnect_delay"`
 }
 
 type PipelineConfig struct {

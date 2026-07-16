@@ -32,7 +32,12 @@ var serveCmd = &cobra.Command{
 
 		log := logger.New(cfg.Server.LogLevel)
 
-		postgres, err := db.New(cfg.Database.DSN)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+
+		ctx = logger.WithContext(ctx, log)
+
+		postgres, err := db.New(ctx, cfg.Database.DSN, cfg.Database.ReconnectDelay)
 		if err != nil {
 			return err
 		}
@@ -94,12 +99,7 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("user_agent is required")
 		}
 
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
-
-		ctx = logger.WithContext(ctx, log)
-
-		go subscription.New(
+		sub := subscription.New(
 			pipelines,
 			feedSvc,
 			websocket.DefaultDialer,
@@ -108,9 +108,11 @@ var serveCmd = &cobra.Command{
 			cfg.Subscription.QueueSize,
 			cfg.Subscription.ReconnectDelay,
 			subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
-		).Listen(ctx)
+		)
 
-		srv := server.New(cfg.Server.Port, log, feedSvc)
+		go sub.Listen(ctx)
+
+		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub)
 		return srv.Run(ctx)
 	},
 }

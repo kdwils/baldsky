@@ -25,17 +25,29 @@ type FeedService interface {
 	Hostname() string
 }
 
-type Server struct {
-	port   int
-	logger *slog.Logger
-	svc    FeedService
+type FirehoseChecker interface {
+	Connected() bool
 }
 
-func New(port int, logger *slog.Logger, svc FeedService) *Server {
+type PingDB interface {
+	PingContext(ctx context.Context) error
+}
+
+type Server struct {
+	port     int
+	logger   *slog.Logger
+	svc      FeedService
+	db       PingDB
+	firehose FirehoseChecker
+}
+
+func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker) *Server {
 	return &Server{
-		port:   port,
-		logger: logger,
-		svc:    svc,
+		port:     port,
+		logger:   logger,
+		svc:      svc,
+		db:       db,
+		firehose: firehose,
 	}
 }
 
@@ -45,6 +57,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	r.HandleFunc("/.well-known/did.json", s.handleDIDDocument()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/_health", s.handleHealth()).Methods(http.MethodGet)
+	r.HandleFunc("/healthz", s.healthz()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/app.bsky.feed.describeFeedGenerator", s.handleDescribeFeedGenerator()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/app.bsky.feed.getFeedSkeleton", s.handleGetFeedSkeleton()).Methods(http.MethodGet)
 
@@ -109,6 +122,23 @@ func (s *Server) handleDIDDocument() http.HandlerFunc {
 func (s *Server) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+func (s *Server) healthz() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dbOK := s.db.PingContext(r.Context()) == nil
+		fhOK := s.firehose != nil && s.firehose.Connected()
+
+		status := http.StatusOK
+		if !dbOK || !fhOK {
+			status = http.StatusServiceUnavailable
+		}
+
+		writeJSON(w, status, map[string]bool{
+			"database": dbOK,
+			"firehose": fhOK,
+		})
 	}
 }
 

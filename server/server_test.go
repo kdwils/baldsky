@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -21,9 +23,25 @@ const (
 	testDID      = "did:web:test.example.com"
 )
 
+type mockPingDB struct {
+	err error
+}
+
+func (m *mockPingDB) PingContext(ctx context.Context) error {
+	return m.err
+}
+
+type mockFirehose struct {
+	connected bool
+}
+
+func (m *mockFirehose) Connected() bool {
+	return m.connected
+}
+
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc)
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true})
 	return srv, svc
 }
 
@@ -34,12 +52,16 @@ func TestNew(t *testing.T) {
 
 		svc := mocks.NewMockFeedService(ctrl)
 		log := slog.Default()
+		db := &mockPingDB{}
+		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc)
+		got := New(9090, log, svc, db, fh)
 		want := &Server{
-			port:   9090,
-			logger: log,
-			svc:    svc,
+			port:     9090,
+			logger:   log,
+			svc:      svc,
+			db:       db,
+			firehose: fh,
 		}
 		assert.Equal(t, want, got)
 	})
@@ -62,6 +84,86 @@ func TestHandleHealth(t *testing.T) {
 		var body map[string]string
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.Equal(t, "ok", body["status"])
+	})
+}
+
+func TestHealthz(t *testing.T) {
+	t.Run("both connected returns 200", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		want := map[string]bool{"database": true, "firehose": true}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("database disconnected returns 503", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true})
+
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.False(t, body["database"])
+		assert.True(t, body["firehose"])
+	})
+
+	t.Run("firehose disconnected returns 503", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false})
+
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.True(t, body["database"])
+		assert.False(t, body["firehose"])
+	})
+
+	t.Run("both disconnected returns 503", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false})
+
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.False(t, body["database"])
+		assert.False(t, body["firehose"])
 	})
 }
 

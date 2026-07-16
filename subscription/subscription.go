@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
@@ -180,6 +181,11 @@ type Subscription struct {
 	queueSize      int
 	reconnectDelay time.Duration
 	userAgent      string
+	connected      atomic.Bool
+}
+
+func (s *Subscription) Connected() bool {
+	return s.connected.Load()
 }
 
 func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, concurrency, queueSize int, reconnectDelay time.Duration, userAgent string) *Subscription {
@@ -259,6 +265,9 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 		s.service,
 		rsc.EventHandler,
 	)
+
+	s.connected.Store(true)
+	defer s.connected.Store(false)
 
 	log.Info("firehose connected, consuming events")
 	return events.HandleRepoStream(ctx, firehoseConn, sched, log)

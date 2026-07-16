@@ -1,15 +1,19 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	pgdriver "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/kdwils/baldsky/logger"
 )
 
 //go:embed schema/migrations/*.sql
@@ -19,14 +23,31 @@ type Postgres struct {
 	DB *sql.DB
 }
 
-func New(dsn string) (*Postgres, error) {
+func New(ctx context.Context, dsn string, reconnectDelay time.Duration) (*Postgres, error) {
+	log := logger.FromContext(ctx)
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 
+	ticker := time.NewTicker(reconnectDelay)
+	defer ticker.Stop()
+
 	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("ping postgres: %w", err)
+		log.Error("failed to connect to database, retrying", "err", err, "delay", reconnectDelay)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("connect to database: %w", ctx.Err())
+			case <-ticker.C:
+				if err := db.Ping(); err != nil {
+					log.Error("failed to connect to database, retrying", "err", err, "delay", reconnectDelay)
+					continue
+				}
+				return &Postgres{DB: db}, nil
+			}
+		}
 	}
 
 	return &Postgres{DB: db}, nil
