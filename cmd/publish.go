@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/kdwils/baldsky/config"
-	"github.com/kdwils/baldsky/db"
-	"github.com/kdwils/baldsky/db/gen"
 	"github.com/kdwils/baldsky/feed"
 	"github.com/kdwils/baldsky/subscription"
 )
@@ -42,18 +40,6 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	postgres, err := db.New(ctx, cfg.Database.DSN, cfg.Database.ReconnectDelay)
-	if err != nil {
-		return err
-	}
-	defer postgres.Close()
-
-	if err := postgres.Migrate(); err != nil {
-		return err
-	}
-
-	querier := gen.New(postgres.DB)
-
 	feedEntries := make([]feed.FeedEntry, 0, len(cfg.Pipelines))
 	for _, p := range cfg.Pipelines {
 		if !p.Enabled {
@@ -68,7 +54,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	}
 
 	feedSvc := feed.New(
-		querier,
+		nil,
 		cfg.Server.ServiceDID,
 		cfg.Server.Hostname,
 		cfg.Server.PublisherDID,

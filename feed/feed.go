@@ -16,8 +16,8 @@ import (
 	"github.com/kdwils/baldsky/db/gen"
 )
 
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_feed_store.go -package=mocks github.com/kdwils/baldsky/feed Store
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_querier.go -package=mocks github.com/kdwils/baldsky/db/gen Querier
+//go:generate go run -tags tools go.uber.org/mock/mockgen destination=mocks/mock_feed_store.go -package=mocks github.com/kdwils/baldsky/feed Store
+//go:generate go run -tags tools go.uber.org/mock/mockgen destination=mocks/mock_querier.go -package=mocks github.com/kdwils/baldsky/db/gen Querier
 
 var (
 	ErrUnknownFeed   = errors.New("UnknownFeed")
