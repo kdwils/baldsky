@@ -16,7 +16,7 @@ import (
 	"github.com/kdwils/baldsky/logger"
 )
 
-//go:generate go run go.uber.org/mock/mockgen destination=mocks/mock_feed_service.go -package=mocks github.com/kdwils/baldsky/server FeedService
+//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_feed_service.go -package=mocks github.com/kdwils/baldsky/server FeedService
 
 type FeedService interface {
 	GetDIDDocument() feed.DIDDocument
