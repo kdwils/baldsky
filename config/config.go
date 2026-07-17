@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	Server       ServerConfig
+	Auth         AuthConfig
 	Database     DatabaseConfig
 	Pipelines    []PipelineConfig
 	Subscription SubscriptionConfig
@@ -25,6 +26,12 @@ type ServerConfig struct {
 	UserAgent    string `mapstructure:"user_agent"`
 	UserAgentURL string `mapstructure:"user_agent_url"`
 	AdminToken   string `mapstructure:"admin_token"`
+}
+
+type AuthConfig struct {
+	PDS        string `mapstructure:"pds"`
+	Identifier string `mapstructure:"identifier"`
+	Password   string `mapstructure:"password"`
 }
 
 type DatabaseConfig struct {

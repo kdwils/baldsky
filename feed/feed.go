@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bluesky-social/indigo/api/atproto"
+	bsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/kdwils/baldsky/db/gen"
 )
 
@@ -33,7 +37,7 @@ type DIDServiceEntry struct {
 }
 
 type FeedDescription struct {
-	DID   string                `json:"did"`
+	DID   string                 `json:"did"`
 	Feeds []FeedDescriptionEntry `json:"feeds"`
 }
 
@@ -79,21 +83,26 @@ type FeedEntry struct {
 }
 
 type Service struct {
-	q            gen.Querier
-	serviceDID   string
-	hostname     string
-	publisherDID string
-	didContext   string
-	serviceID    string
-	feeds        map[string]FeedEntry
+	q                   gen.Querier
+	serviceDID          string
+	hostname            string
+	publisherDID        string
+	didContext          string
+	serviceID           string
+	feeds               map[string]FeedEntry
+	pds                 string
+	publisherIdentifier string
+	publisherPassword   string
+	userAgent           string
+	now                 func() string
 }
 
-func New(q gen.Querier, serviceDID, hostname, publisherDID, didContext, serviceID string, entries []FeedEntry) *Service {
+func New(q gen.Querier, serviceDID, hostname, publisherDID, didContext, serviceID string, entries []FeedEntry, opts ...Option) *Service {
 	feeds := make(map[string]FeedEntry, len(entries))
 	for _, e := range entries {
 		feeds[e.ShortName] = e
 	}
-	return &Service{
+	s := &Service{
 		q:            q,
 		serviceDID:   serviceDID,
 		hostname:     hostname,
@@ -101,6 +110,22 @@ func New(q gen.Querier, serviceDID, hostname, publisherDID, didContext, serviceI
 		didContext:   didContext,
 		serviceID:    serviceID,
 		feeds:        feeds,
+		now:          now,
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+type Option func(*Service)
+
+func WithPublisher(pds, identifier, password, userAgent string) Option {
+	return func(s *Service) {
+		s.pds = pds
+		s.publisherIdentifier = identifier
+		s.publisherPassword = password
+		s.userAgent = userAgent
 	}
 }
 
@@ -263,4 +288,85 @@ func parseCursor(cursor string) (string, string, error) {
 
 func buildCursor(indexedAt, cid string) string {
 	return fmt.Sprintf("%s::%s", indexedAt, cid)
+}
+
+// Publish iterates every feed entry and writes (or updates) the corresponding
+// app.bsky.feed.generator record on the publisher's PDS. It returns the AT-URIs
+// of the published feed generators keyed by short name.
+func (s *Service) Publish(ctx context.Context) (map[string]string, error) {
+	if s.pds == "" {
+		return nil, fmt.Errorf("auth.pds is required to publish feeds")
+	}
+	if s.publisherIdentifier == "" {
+		return nil, fmt.Errorf("auth.identifier is required to publish feeds")
+	}
+	if s.publisherPassword == "" {
+		return nil, fmt.Errorf("auth.password is required to publish feeds")
+	}
+
+	client := &xrpc.Client{
+		Host:      s.pds,
+		UserAgent: &s.userAgent,
+	}
+
+	session, err := atproto.ServerCreateSession(ctx, client, &atproto.ServerCreateSession_Input{
+		Identifier: s.publisherIdentifier,
+		Password:   s.publisherPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("authenticating with PDS %s: %w", s.pds, err)
+	}
+
+	client.Auth = &xrpc.AuthInfo{
+		AccessJwt:  session.AccessJwt,
+		RefreshJwt: session.RefreshJwt,
+		Handle:     session.Handle,
+		Did:        session.Did,
+	}
+
+	published := make(map[string]string)
+	for _, entry := range s.feeds {
+		if entry.CollectionName != "app.bsky.feed.generator" {
+			continue
+		}
+
+		uri, err := s.publishFeed(ctx, client, entry)
+		if err != nil {
+			return published, fmt.Errorf("publishing feed %s: %w", entry.ShortName, err)
+		}
+
+		published[entry.ShortName] = uri
+	}
+
+	return published, nil
+}
+
+func (s *Service) publishFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
+	description := entry.Description
+	record := &bsky.FeedGenerator{
+		Did:         s.publisherDID,
+		DisplayName: entry.DisplayName,
+		Description: &description,
+		CreatedAt:   s.now(),
+	}
+
+	input := &atproto.RepoPutRecord_Input{
+		Repo:       s.publisherDID,
+		Collection: entry.CollectionName,
+		Rkey:       entry.ShortName,
+		Record: &util.LexiconTypeDecoder{
+			Val: record,
+		},
+	}
+
+	out, err := atproto.RepoPutRecord(ctx, client, input)
+	if err != nil {
+		return "", err
+	}
+
+	return out.Uri, nil
+}
+
+func now() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }

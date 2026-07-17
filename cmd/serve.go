@@ -72,6 +72,12 @@ var serveCmd = &cobra.Command{
 			cfg.Server.DIDContext,
 			cfg.Server.ServiceID,
 			feedEntries,
+			feed.WithPublisher(
+				cfg.Auth.PDS,
+				cfg.Auth.Identifier,
+				cfg.Auth.Password,
+				subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
+			),
 		)
 
 		for _, p := range cfg.Pipelines {
