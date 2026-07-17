@@ -453,9 +453,10 @@ func TestConformance(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-		var gotHealth map[string]string
+		var gotHealth map[string]bool
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&gotHealth))
-		assert.Equal(t, "ok", gotHealth["status"])
+		wantHealth := map[string]bool{"database": true, "firehose": true}
+		assert.Equal(t, wantHealth, gotHealth)
 
 		resp2, err := http.Get("http://localhost:18088/xrpc/_health")
 		require.NoError(t, err)

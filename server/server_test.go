@@ -83,9 +83,10 @@ func TestHandleHealth(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-		var body map[string]string
+		var body map[string]bool
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-		assert.Equal(t, "ok", body["status"])
+		assert.True(t, body["database"])
+		assert.True(t, body["firehose"])
 	})
 }
 
@@ -102,9 +103,10 @@ func TestHealthz(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		var got map[string]string
+		var got map[string]bool
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-		assert.Equal(t, "ok", got["status"])
+		want := map[string]bool{"database": true, "firehose": true}
+		assert.Equal(t, want, got)
 	})
 
 	t.Run("database disconnected returns 503", func(t *testing.T) {
@@ -120,6 +122,11 @@ func TestHealthz(t *testing.T) {
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.False(t, body["database"])
+		assert.True(t, body["firehose"])
 	})
 
 	t.Run("firehose disconnected returns 503", func(t *testing.T) {
@@ -135,6 +142,11 @@ func TestHealthz(t *testing.T) {
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.True(t, body["database"])
+		assert.False(t, body["firehose"])
 	})
 
 	t.Run("both disconnected returns 503", func(t *testing.T) {
@@ -150,6 +162,11 @@ func TestHealthz(t *testing.T) {
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.False(t, body["database"])
+		assert.False(t, body["firehose"])
 	})
 }
 

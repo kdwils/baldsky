@@ -149,8 +149,9 @@ func (s *Server) healthz() http.HandlerFunc {
 			status = http.StatusServiceUnavailable
 		}
 
-		writeJSON(w, status, map[string]string{
-			"status": "ok",
+		writeJSON(w, status, map[string]bool{
+			"database": dbOK,
+			"firehose": fhOK,
 		})
 	}
 }
