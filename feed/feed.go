@@ -350,16 +350,16 @@ func (s *Service) publishFeed(ctx context.Context, client *xrpc.Client, entry Fe
 		CreatedAt:   s.now(),
 	}
 
-	input := &atproto.RepoPutRecord_Input{
+	input := &atproto.RepoCreateRecord_Input{
 		Repo:       s.publisherDID,
 		Collection: entry.CollectionName,
-		Rkey:       entry.ShortName,
+		Rkey:       new(entry.ShortName),
 		Record: &util.LexiconTypeDecoder{
 			Val: record,
 		},
 	}
 
-	out, err := atproto.RepoPutRecord(ctx, client, input)
+	out, err := atproto.RepoCreateRecord(ctx, client, input)
 	if err != nil {
 		return "", err
 	}
