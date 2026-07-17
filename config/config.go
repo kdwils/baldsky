@@ -24,6 +24,7 @@ type ServerConfig struct {
 	ServiceID    string `mapstructure:"service_id"`
 	UserAgent    string `mapstructure:"user_agent"`
 	UserAgentURL string `mapstructure:"user_agent_url"`
+	AdminToken   string `mapstructure:"admin_token"`
 }
 
 type DatabaseConfig struct {

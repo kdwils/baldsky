@@ -147,6 +147,10 @@ func (s *Service) InsertPost(ctx context.Context, feedName, uri, cid string) err
 	})
 }
 
+func (s *Service) DeletePost(ctx context.Context, uri string) error {
+	return s.q.DeletePost(ctx, uri)
+}
+
 func (s *Service) DeletePosts(ctx context.Context, uris []string) error {
 	for _, uri := range uris {
 		if err := s.q.DeletePost(ctx, uri); err != nil {

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gorilla/mux"
 	"github.com/kdwils/baldsky/feed"
 	"github.com/kdwils/baldsky/logger"
 	"github.com/kdwils/baldsky/server/mocks"
@@ -41,7 +42,7 @@ func (m *mockFirehose) Connected() bool {
 
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true})
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token")
 	return srv, svc
 }
 
@@ -55,13 +56,14 @@ func TestNew(t *testing.T) {
 		db := &mockPingDB{}
 		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc, db, fh)
+		got := New(9090, log, svc, db, fh, "secret")
 		want := &Server{
-			port:     9090,
-			logger:   log,
-			svc:      svc,
-			db:       db,
-			firehose: fh,
+			port:       9090,
+			logger:     log,
+			svc:        svc,
+			db:         db,
+			firehose:   fh,
+			adminToken: "secret",
 		}
 		assert.Equal(t, want, got)
 	})
@@ -76,7 +78,7 @@ func TestHandleHealth(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
 
-		srv.handleHealth()(w, req)
+		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -93,17 +95,16 @@ func TestHealthz(t *testing.T) {
 		defer ctrl.Finish()
 
 		srv, _ := newTestServer(ctrl)
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
 
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		var got map[string]bool
+		var got map[string]string
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-		want := map[string]bool{"database": true, "firehose": true}
-		assert.Equal(t, want, got)
+		assert.Equal(t, "ok", got["status"])
 	})
 
 	t.Run("database disconnected returns 503", func(t *testing.T) {
@@ -111,19 +112,14 @@ func TestHealthz(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true})
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "")
 
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
 
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-
-		var body map[string]bool
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-		assert.False(t, body["database"])
-		assert.True(t, body["firehose"])
 	})
 
 	t.Run("firehose disconnected returns 503", func(t *testing.T) {
@@ -131,19 +127,14 @@ func TestHealthz(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false})
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "")
 
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
 
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-
-		var body map[string]bool
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-		assert.True(t, body["database"])
-		assert.False(t, body["firehose"])
 	})
 
 	t.Run("both disconnected returns 503", func(t *testing.T) {
@@ -151,19 +142,14 @@ func TestHealthz(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false})
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "")
 
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
 
 		srv.healthz()(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-
-		var body map[string]bool
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-		assert.False(t, body["database"])
-		assert.False(t, body["firehose"])
 	})
 }
 
@@ -476,5 +462,83 @@ func TestWriteJSON(t *testing.T) {
 		var body map[string]string
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.Equal(t, "not found", body["error"])
+	})
+}
+
+func TestHandleDeletePost(t *testing.T) {
+	t.Run("missing auth returns 401", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		handler := srv.withBearerAuth()(srv.handleDeletePost())
+		req := httptest.NewRequest(http.MethodDelete, "/admin/posts/some-uri", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		var got map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Equal(t, map[string]string{"error": "unauthorized"}, got)
+	})
+
+	t.Run("wrong token returns 401", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		handler := srv.withBearerAuth()(srv.handleDeletePost())
+		req := httptest.NewRequest(http.MethodDelete, "/admin/posts/some-uri", nil)
+		req.Header.Set("Authorization", "Bearer wrong-token")
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		var got map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Equal(t, map[string]string{"error": "unauthorized"}, got)
+	})
+
+	t.Run("valid token deletes post and returns 204", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		uri := "at://did:plc:actor1/app.bsky.feed.post/abc123"
+		svc.EXPECT().DeletePost(gomock.Any(), uri).Return(nil)
+
+		handler := srv.withBearerAuth()(srv.handleDeletePost())
+		req := httptest.NewRequest(http.MethodDelete, "/admin/posts/"+uri, nil)
+		req.Header.Set("Authorization", "Bearer test-token")
+		req = mux.SetURLVars(req, map[string]string{"uri": uri})
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNoContent, w.Code)
+	})
+
+	t.Run("valid token service error returns 500", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, svc := newTestServer(ctrl)
+		uri := "at://did:plc:actor1/app.bsky.feed.post/abc123"
+		svc.EXPECT().DeletePost(gomock.Any(), uri).Return(errors.New("db error"))
+
+		handler := srv.withBearerAuth()(srv.handleDeletePost())
+		req := httptest.NewRequest(http.MethodDelete, "/admin/posts/"+uri, nil)
+		req.Header.Set("Authorization", "Bearer test-token")
+		req = mux.SetURLVars(req, map[string]string{"uri": uri})
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		var got map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, map[string]string{"error": "internal server error"}, got)
 	})
 }

@@ -22,6 +22,7 @@ type FeedService interface {
 	GetDIDDocument() feed.DIDDocument
 	GetFeedDescription() feed.FeedDescription
 	GetFeedPage(ctx context.Context, feedURI, limit, cursor string) (feed.FeedResponse, error)
+	DeletePost(ctx context.Context, uri string) error
 	Hostname() string
 }
 
@@ -34,20 +35,22 @@ type PingDB interface {
 }
 
 type Server struct {
-	port     int
-	logger   *slog.Logger
-	svc      FeedService
-	db       PingDB
-	firehose FirehoseChecker
+	port       int
+	logger     *slog.Logger
+	svc        FeedService
+	db         PingDB
+	firehose   FirehoseChecker
+	adminToken string
 }
 
-func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker) *Server {
+func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string) *Server {
 	return &Server{
-		port:     port,
-		logger:   logger,
-		svc:      svc,
-		db:       db,
-		firehose: firehose,
+		port:       port,
+		logger:     logger,
+		svc:        svc,
+		db:         db,
+		firehose:   firehose,
+		adminToken: adminToken,
 	}
 }
 
@@ -56,10 +59,13 @@ func (s *Server) Run(ctx context.Context) error {
 	r.Use(withLogger(s.logger))
 
 	r.HandleFunc("/.well-known/did.json", s.handleDIDDocument()).Methods(http.MethodGet)
-	r.HandleFunc("/xrpc/_health", s.handleHealth()).Methods(http.MethodGet)
-	r.HandleFunc("/healthz", s.healthz()).Methods(http.MethodGet)
+	r.HandleFunc("/xrpc/_health", s.healthz()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/app.bsky.feed.describeFeedGenerator", s.handleDescribeFeedGenerator()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/app.bsky.feed.getFeedSkeleton", s.handleGetFeedSkeleton()).Methods(http.MethodGet)
+
+	admin := r.PathPrefix("/admin").Subrouter()
+	admin.Use(s.withBearerAuth())
+	admin.HandleFunc("/posts/{uri}", s.handleDeletePost()).Methods(http.MethodDelete)
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
@@ -100,6 +106,20 @@ func withLogger(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+func (s *Server) withBearerAuth() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			token, ok := strings.CutPrefix(auth, "Bearer ")
+			if !ok || token != s.adminToken {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -119,12 +139,6 @@ func (s *Server) handleDIDDocument() http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleHealth() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	}
-}
-
 func (s *Server) healthz() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dbOK := s.db.PingContext(r.Context()) == nil
@@ -135,9 +149,8 @@ func (s *Server) healthz() http.HandlerFunc {
 			status = http.StatusServiceUnavailable
 		}
 
-		writeJSON(w, status, map[string]bool{
-			"database": dbOK,
-			"firehose": fhOK,
+		writeJSON(w, status, map[string]string{
+			"status": "ok",
 		})
 	}
 }
@@ -181,5 +194,27 @@ func (s *Server) handleGetFeedSkeleton() http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func (s *Server) handleDeletePost() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uri := mux.Vars(r)["uri"]
+		if uri == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing uri"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		if err := s.svc.DeletePost(ctx, uri); err != nil {
+			log := logger.FromContext(r.Context())
+			log.Error("delete post", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
