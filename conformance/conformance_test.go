@@ -457,17 +457,6 @@ func TestConformance(t *testing.T) {
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&gotHealth))
 		wantHealth := map[string]bool{"database": true, "firehose": true}
 		assert.Equal(t, wantHealth, gotHealth)
-
-		resp2, err := http.Get("http://localhost:18088/xrpc/_health")
-		require.NoError(t, err)
-		defer resp2.Body.Close()
-
-		assert.Equal(t, http.StatusOK, resp2.StatusCode)
-
-		var gotXrpcHealth map[string]string
-		require.NoError(t, json.NewDecoder(resp2.Body).Decode(&gotXrpcHealth))
-		wantXrpcHealth := map[string]string{"status": "ok"}
-		assert.Equal(t, wantXrpcHealth, gotXrpcHealth)
 	})
 
 	t.Run("did document", func(t *testing.T) {

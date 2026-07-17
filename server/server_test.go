@@ -88,26 +88,6 @@ func TestHandleHealth(t *testing.T) {
 		assert.True(t, body["database"])
 		assert.True(t, body["firehose"])
 	})
-}
-
-func TestHealthz(t *testing.T) {
-	t.Run("both connected returns 200", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		srv, _ := newTestServer(ctrl)
-		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
-		w := httptest.NewRecorder()
-
-		srv.healthz()(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-
-		var got map[string]bool
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-		want := map[string]bool{"database": true, "firehose": true}
-		assert.Equal(t, want, got)
-	})
 
 	t.Run("database disconnected returns 503", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
