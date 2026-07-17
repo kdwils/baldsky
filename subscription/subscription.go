@@ -26,9 +26,9 @@ func BuildUserAgent(name, url string) string {
 	return name + "/" + version.Version + " (+" + url + ")"
 }
 
-//go:generate go run -tags tools go.uber.org/mock/mockgen destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
-//go:generate go run -tags tools go.uber.org/mock/mockgen destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
-//go:generate go run -tags tools go.uber.org/mock/mockgen destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
+//go:generate go run go.uber.org/mock/mockgen destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
+//go:generate go run go.uber.org/mock/mockgen destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
+//go:generate go run go.uber.org/mock/mockgen destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
 
 type Dialer interface {
 	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
