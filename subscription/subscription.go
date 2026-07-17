@@ -172,6 +172,27 @@ func (p *Pipeline) matches(text string) bool {
 	return false
 }
 
+func (p *Pipeline) MatchesPost(text string, langs []string, hasEmbed bool) bool {
+	if p.requireMedia && !hasEmbed {
+		return false
+	}
+
+	if len(p.languages) > 0 && len(langs) > 0 {
+		matched := false
+		for _, lang := range langs {
+			if _, ok := p.languages[strings.ToLower(lang)]; ok {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	return p.matches(text)
+}
+
 type Subscription struct {
 	pipelines      []Pipeline
 	dialer         Dialer
@@ -255,7 +276,7 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 
 	rsc := &events.RepoStreamCallbacks{
 		RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
-			return s.handleCommit(ctx, evt)
+			return s.HandleCommit(ctx, evt)
 		},
 	}
 
@@ -273,7 +294,7 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
 }
 
-func (s *Subscription) handleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
 	log := logger.FromContext(ctx)
 
 	if evt == nil {

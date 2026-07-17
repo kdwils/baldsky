@@ -661,7 +661,7 @@ func mustCompileRegexps(keywords []string) []*regexp.Regexp {
 func TestHandleCreate(t *testing.T) {
 	t.Run("nil event is skipped", func(t *testing.T) {
 		s := &Subscription{}
-		err := s.handleCommit(t.Context(), nil)
+		err := s.HandleCommit(t.Context(), nil)
 		require.NoError(t, err)
 	})
 
@@ -672,7 +672,7 @@ func TestHandleCreate(t *testing.T) {
 			Seq:    1,
 			TooBig: true,
 		}
-		err := s.handleCommit(t.Context(), evt)
+		err := s.HandleCommit(t.Context(), evt)
 		require.NoError(t, err)
 	})
 }

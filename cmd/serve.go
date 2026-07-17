@@ -112,7 +112,7 @@ var serveCmd = &cobra.Command{
 
 		go sub.Listen(ctx)
 
-		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub)
+		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken)
 		return srv.Run(ctx)
 	},
 }

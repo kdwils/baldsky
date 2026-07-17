@@ -41,6 +41,20 @@ func (m *MockFeedService) EXPECT() *MockFeedServiceMockRecorder {
 	return m.recorder
 }
 
+// DeletePost mocks base method.
+func (m *MockFeedService) DeletePost(ctx context.Context, uri string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePost", ctx, uri)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeletePost indicates an expected call of DeletePost.
+func (mr *MockFeedServiceMockRecorder) DeletePost(ctx, uri any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePost", reflect.TypeOf((*MockFeedService)(nil).DeletePost), ctx, uri)
+}
+
 // GetDIDDocument mocks base method.
 func (m *MockFeedService) GetDIDDocument() feed.DIDDocument {
 	m.ctrl.T.Helper()
