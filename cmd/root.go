@@ -59,6 +59,9 @@ func initConfig() {
 	viper.SetDefault("subscription.reconnect_delay", "5s")
 	viper.SetDefault("subscription.concurrency", 4)
 	viper.SetDefault("subscription.queue_size", 1000)
+	viper.SetDefault("auth.pds", "https://bsky.social")
+	viper.SetDefault("auth.identifier", "")
+	viper.SetDefault("auth.password", "")
 
 	viper.SetEnvPrefix("BALDSKY")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

@@ -26,9 +26,9 @@ func BuildUserAgent(name, url string) string {
 	return name + "/" + version.Version + " (+" + url + ")"
 }
 
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
+//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
+//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
+//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
 
 type Dialer interface {
 	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
@@ -45,19 +45,19 @@ type CursorStore interface {
 }
 
 type Pipeline struct {
-	Name                   string
-	keywords               []string
-	excludeKeywords        []string
-	contextKeywords        []string
-	contextWords           []string
-	keywordRegexps         []*regexp.Regexp
-	excludeRegexps         []*regexp.Regexp
-	contextKeywordRegexps  []*regexp.Regexp
-	contextWordRegexps     []*regexp.Regexp
-	languages              map[string]struct{}
-	blockedDIDs            map[string]struct{}
-	requireMedia           bool
-	Store                  PipelineStore
+	Name                  string
+	keywords              []string
+	excludeKeywords       []string
+	contextKeywords       []string
+	contextWords          []string
+	keywordRegexps        []*regexp.Regexp
+	excludeRegexps        []*regexp.Regexp
+	contextKeywordRegexps []*regexp.Regexp
+	contextWordRegexps    []*regexp.Regexp
+	languages             map[string]struct{}
+	blockedDIDs           map[string]struct{}
+	requireMedia          bool
+	Store                 PipelineStore
 }
 
 func NewPipeline(name string, keywords, excludeKeywords, contextKeywords, contextWords, blockDIDs, languages []string, requireMedia bool, store PipelineStore) (Pipeline, error) {
