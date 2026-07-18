@@ -492,7 +492,7 @@ func TestConformance(t *testing.T) {
 				{
 					ID:              "#bsky_fg",
 					Type:            "BskyFeedGenerator",
-					ServiceEndpoint: hostname,
+					ServiceEndpoint: "https://" + hostname,
 				},
 			},
 		}
