@@ -17,7 +17,7 @@ import (
 
 const (
 	testServiceDID   = "did:web:test.example.com"
-	testHostname     = "https://test.example.com"
+	testHostname     = "test.example.com"
 	testPublisherDID = "did:plc:publisher123"
 	testDidContext   = "https://www.w3.org/ns/did/v1"
 	testServiceID    = "#bsky_fg"
@@ -73,7 +73,7 @@ func TestGetDIDDocument(t *testing.T) {
 			{
 				ID:              testServiceID,
 				Type:            "BskyFeedGenerator",
-				ServiceEndpoint: testHostname,
+				ServiceEndpoint: "https://" + testHostname,
 			},
 		},
 	}

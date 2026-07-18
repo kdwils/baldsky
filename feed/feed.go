@@ -141,7 +141,7 @@ func (s *Service) GetDIDDocument() DIDDocument {
 			{
 				ID:              s.serviceID,
 				Type:            "BskyFeedGenerator",
-				ServiceEndpoint: s.hostname,
+				ServiceEndpoint: "https://" + s.hostname,
 			},
 		},
 	}
