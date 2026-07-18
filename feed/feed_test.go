@@ -48,7 +48,8 @@ func feedURI(shortName string) string {
 	return "at://" + testPublisherDID + "/app.bsky.feed.generator/" + shortName
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 func TestHostname(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -276,7 +277,7 @@ func TestGetFeedPage(t *testing.T) {
 				{Post: "at://post1"},
 				{Post: "at://post2"},
 			},
-			Cursor: ptr("2024-01-02T00:00:00Z::cid2"),
+			Cursor: new("2024-01-02T00:00:00Z::cid2"),
 		}
 		assert.Equal(t, want, got)
 	})

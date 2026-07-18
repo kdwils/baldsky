@@ -42,7 +42,7 @@ func (m *mockFirehose) Connected() bool {
 
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token")
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200))
 	return srv, svc
 }
 
@@ -56,7 +56,7 @@ func TestNew(t *testing.T) {
 		db := &mockPingDB{}
 		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc, db, fh, "secret")
+		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20))
 		want := &Server{
 			port:       9090,
 			logger:     log,
@@ -64,6 +64,7 @@ func TestNew(t *testing.T) {
 			db:         db,
 			firehose:   fh,
 			adminToken: "secret",
+			rl:         got.rl,
 		}
 		assert.Equal(t, want, got)
 	})
@@ -94,7 +95,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "")
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -114,7 +115,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "")
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -134,7 +135,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "")
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -459,6 +460,81 @@ func TestWriteJSON(t *testing.T) {
 		var body map[string]string
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.Equal(t, "not found", body["error"])
+	})
+}
+
+func TestWithRateLimit(t *testing.T) {
+	t.Run("allows request within rate limit", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withRateLimit()(inner)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.RemoteAddr = "1.2.3.4:1234"
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("rejects request exceeding rate limit", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1))
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withRateLimit()(inner)
+
+		req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req1.RemoteAddr = "1.2.3.4:1234"
+		w1 := httptest.NewRecorder()
+		handler.ServeHTTP(w1, req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req2.RemoteAddr = "1.2.3.4:1234"
+		w2 := httptest.NewRecorder()
+		handler.ServeHTTP(w2, req2)
+
+		assert.Equal(t, http.StatusTooManyRequests, w2.Code)
+	})
+
+	t.Run("different ips have independent limits", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1))
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withRateLimit()(inner)
+
+		req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req1.RemoteAddr = "1.1.1.1:1234"
+		w1 := httptest.NewRecorder()
+		handler.ServeHTTP(w1, req1)
+
+		req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req2.RemoteAddr = "1.1.1.1:1234"
+		w2 := httptest.NewRecorder()
+		handler.ServeHTTP(w2, req2)
+
+		assert.Equal(t, http.StatusTooManyRequests, w2.Code)
+
+		req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req3.RemoteAddr = "2.2.2.2:1234"
+		w3 := httptest.NewRecorder()
+		handler.ServeHTTP(w3, req3)
+
+		assert.Equal(t, http.StatusOK, w3.Code)
 	})
 }
 

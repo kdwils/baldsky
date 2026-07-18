@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,9 +42,10 @@ type Server struct {
 	db         PingDB
 	firehose   FirehoseChecker
 	adminToken string
+	rl         *RateLimiter
 }
 
-func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string) *Server {
+func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string, rl *RateLimiter) *Server {
 	return &Server{
 		port:       port,
 		logger:     logger,
@@ -51,12 +53,16 @@ func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose Fir
 		db:         db,
 		firehose:   firehose,
 		adminToken: adminToken,
+		rl:         rl,
 	}
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	s.rl.StartCleanup(ctx)
+
 	r := mux.NewRouter()
 	r.Use(withLogger(s.logger))
+	r.Use(s.withRateLimit())
 
 	r.HandleFunc("/.well-known/did.json", s.handleDIDDocument()).Methods(http.MethodGet)
 	r.HandleFunc("/xrpc/_health", s.healthz()).Methods(http.MethodGet)
@@ -217,5 +223,21 @@ func (s *Server) handleDeletePost() http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *Server) withRateLimit() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				ip = r.RemoteAddr
+			}
+			if !s.rl.Allow(ip) {
+				writeJSON(w, http.StatusTooManyRequests, nil)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }
