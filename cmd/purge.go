@@ -132,10 +132,7 @@ func findStalePosts(ctx context.Context, q gen.Querier, c *xrpc.Client, pipeline
 		}
 
 		for i := 0; i < len(rows); i += batchSize {
-			end := i + batchSize
-			if end > len(rows) {
-				end = len(rows)
-			}
+			end := min(i+batchSize, len(rows))
 			batch := rows[i:end]
 
 			uris := make([]string, len(batch))
