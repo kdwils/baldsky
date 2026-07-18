@@ -96,6 +96,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -106,7 +107,7 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18081)
 
@@ -135,6 +136,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -144,7 +146,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18082)
 
@@ -168,6 +170,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -178,7 +181,7 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18083)
 
@@ -209,6 +212,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -219,7 +223,7 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18084)
 
@@ -270,6 +274,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -280,7 +285,7 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18085)
 
@@ -324,6 +329,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -334,7 +340,7 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18086)
 
@@ -377,6 +383,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -389,7 +396,7 @@ func TestConformance(t *testing.T) {
 		baldFeedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 		hairFeedURI := "at://" + publisherDID + "/app.bsky.feed.generator/hair"
 
-		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18087)
 
@@ -434,6 +441,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -443,7 +451,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18088)
 
@@ -464,6 +472,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -473,7 +482,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18089)
 
@@ -504,6 +513,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -514,7 +524,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18090)
 
@@ -553,6 +563,7 @@ func TestConformance(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		fh := mocks.NewMockFirehoseChecker(ctrl)
 		fh.EXPECT().Connected().Return(true).AnyTimes()
+		rl := server.NewRateLimiter(10.0, 20, 3*time.Minute)
 
 		sqldb := newDB(t)
 		queries := gen.New(sqldb)
@@ -562,7 +573,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token")
+		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
 		go srv.Run(ctx)
 		waitForServer(t, 18091)
 
