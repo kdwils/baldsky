@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/kdwils/baldsky/cache"
@@ -10,7 +11,7 @@ import (
 
 type limiterEntry struct {
 	limiter  *rate.Limiter
-	lastUsed time.Time
+	lastUsed atomic.Int64
 }
 
 type RateLimiter struct {
@@ -18,6 +19,7 @@ type RateLimiter struct {
 	rate     rate.Limit
 	burst    int
 	maxAge   time.Duration
+	now      func() time.Time
 }
 
 func NewRateLimiter(requestsPerSecond float64, burst int, maxAge time.Duration) *RateLimiter {
@@ -25,6 +27,7 @@ func NewRateLimiter(requestsPerSecond float64, burst int, maxAge time.Duration) 
 		rate:   rate.Limit(requestsPerSecond),
 		burst:  burst,
 		maxAge: maxAge,
+		now:    time.Now,
 	}
 
 	rl.limiters = cache.New(
@@ -35,17 +38,19 @@ func NewRateLimiter(requestsPerSecond float64, burst int, maxAge time.Duration) 
 }
 
 func (rl *RateLimiter) isStale(_ string, entry *limiterEntry) bool {
-	return time.Since(entry.lastUsed) > rl.maxAge
+	return rl.now().Sub(time.Unix(0, entry.lastUsed.Load())) > rl.maxAge
 }
 
 func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
 	if entry, ok := rl.limiters.Get(ip); ok {
-		entry.lastUsed = time.Now()
+		entry.lastUsed.Store(rl.now().UnixNano())
 		return entry.limiter
 	}
 
 	newLimiter := rate.NewLimiter(rl.rate, rl.burst)
-	rl.limiters.Set(ip, &limiterEntry{limiter: newLimiter, lastUsed: time.Now()})
+	e := &limiterEntry{limiter: newLimiter}
+	e.lastUsed.Store(rl.now().UnixNano())
+	rl.limiters.Set(ip, e)
 	return newLimiter
 }
 
@@ -58,10 +63,10 @@ func (rl *RateLimiter) StartCleanup(ctx context.Context) {
 }
 
 func (rl *RateLimiter) purgeStale() {
-	cutoff := time.Now().Add(-rl.maxAge)
+	cutoff := rl.now().Add(-rl.maxAge)
 	for _, ip := range rl.limiters.Keys() {
 		entry, ok := rl.limiters.Get(ip)
-		if ok && entry.lastUsed.Before(cutoff) {
+		if ok && time.Unix(0, entry.lastUsed.Load()).Before(cutoff) {
 			rl.limiters.Delete(ip)
 		}
 	}

@@ -13,15 +13,12 @@ import (
 )
 
 func TestNewRateLimiter(t *testing.T) {
-	t.Run("sets rate and burst", func(t *testing.T) {
+	t.Run("sets rate, burst, and maxAge", func(t *testing.T) {
 		got := NewRateLimiter(10.0, 20, 3*time.Minute)
-		want := &RateLimiter{
-			rate:     rate.Limit(10.0),
-			burst:    20,
-			maxAge:   3 * time.Minute,
-			limiters: got.limiters,
-		}
-		assert.Equal(t, want, got)
+		assert.Equal(t, rate.Limit(10.0), got.rate)
+		assert.Equal(t, 20, got.burst)
+		assert.Equal(t, 3*time.Minute, got.maxAge)
+		assert.NotNil(t, got.limiters)
 	})
 }
 
@@ -102,15 +99,15 @@ func TestGetLimiter(t *testing.T) {
 
 func TestPurgeStale(t *testing.T) {
 	t.Run("removes entries older than maxAge", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10, 3*time.Minute)
-		rl.maxAge = 1 * time.Hour
+		rl := NewRateLimiter(100, 10, 1*time.Hour)
 
+		rl.now = func() time.Time { return time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC) }
 		rl.Allow("old-ip")
 		rl.Allow("new-ip")
 
 		entry, ok := rl.limiters.Get("old-ip")
 		require.True(t, ok)
-		entry.lastUsed = time.Now().Add(-2 * time.Hour)
+		entry.lastUsed.Store(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano())
 
 		rl.purgeStale()
 
@@ -122,8 +119,7 @@ func TestPurgeStale(t *testing.T) {
 	})
 
 	t.Run("keeps all entries within maxAge", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10, 3*time.Minute)
-		rl.maxAge = 1 * time.Hour
+		rl := NewRateLimiter(100, 10, 1*time.Hour)
 
 		rl.Allow("ip-a")
 		rl.Allow("ip-b")
@@ -137,8 +133,7 @@ func TestPurgeStale(t *testing.T) {
 
 func TestStartCleanup(t *testing.T) {
 	t.Run("purges stale entries on interval", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10, 3*time.Minute)
-		rl.maxAge = 1 * time.Millisecond
+		rl := NewRateLimiter(100, 10, 1*time.Millisecond)
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 
 		rl.Allow("stale-ip")
@@ -154,8 +149,7 @@ func TestStartCleanup(t *testing.T) {
 	})
 
 	t.Run("stops on context cancel", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10, 3*time.Minute)
-		rl.maxAge = 1 * time.Millisecond
+		rl := NewRateLimiter(100, 10, 1*time.Hour)
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -169,8 +163,8 @@ func TestStartCleanup(t *testing.T) {
 	})
 
 	t.Run("does not remove recently used entries", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10, 3*time.Minute)
-		rl.maxAge = 10 * time.Second
+		rl := NewRateLimiter(100, 10, 10*time.Second)
+
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 
 		rl.Allow("active-ip")
