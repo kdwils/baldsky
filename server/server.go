@@ -131,12 +131,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (s *Server) handleDIDDocument() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		doc := s.svc.GetDIDDocument()
-		if !strings.HasSuffix(doc.ID, s.svc.Hostname()) {
+		if didWebHost(doc.ID) != didWebHost(s.svc.Hostname()) {
 			http.NotFound(w, r)
 			return
 		}
 		writeJSON(w, http.StatusOK, doc)
 	}
+}
+
+func didWebHost(s string) string {
+	s = strings.TrimPrefix(s, "did:web:")
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	s = strings.TrimRight(s, "/")
+	return s
 }
 
 func (s *Server) healthz() http.HandlerFunc {

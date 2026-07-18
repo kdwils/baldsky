@@ -344,7 +344,7 @@ func (s *Service) Publish(ctx context.Context) (map[string]string, error) {
 func (s *Service) publishFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
 	description := entry.Description
 	record := &bsky.FeedGenerator{
-		Did:         s.publisherDID,
+		Did:         s.serviceDID,
 		DisplayName: entry.DisplayName,
 		Description: &description,
 		CreatedAt:   s.now(),
@@ -365,6 +365,151 @@ func (s *Service) publishFeed(ctx context.Context, client *xrpc.Client, entry Fe
 	}
 
 	return out.Uri, nil
+}
+
+// Update iterates every feed entry and writes (or updates) the corresponding
+// app.bsky.feed.generator record on the publisher's PDS using putRecord.
+// It returns the AT-URIs of the updated feed generators keyed by short name.
+func (s *Service) Update(ctx context.Context) (map[string]string, error) {
+	if s.pds == "" {
+		return nil, fmt.Errorf("auth.pds is required to update feeds")
+	}
+	if s.publisherIdentifier == "" {
+		return nil, fmt.Errorf("auth.identifier is required to update feeds")
+	}
+	if s.publisherPassword == "" {
+		return nil, fmt.Errorf("auth.password is required to update feeds")
+	}
+
+	client := &xrpc.Client{
+		Host:      s.pds,
+		UserAgent: &s.userAgent,
+	}
+
+	session, err := atproto.ServerCreateSession(ctx, client, &atproto.ServerCreateSession_Input{
+		Identifier: s.publisherIdentifier,
+		Password:   s.publisherPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("authenticating with PDS %s: %w", s.pds, err)
+	}
+
+	client.Auth = &xrpc.AuthInfo{
+		AccessJwt:  session.AccessJwt,
+		RefreshJwt: session.RefreshJwt,
+		Handle:     session.Handle,
+		Did:        session.Did,
+	}
+
+	updated := make(map[string]string)
+	for _, entry := range s.feeds {
+		if entry.CollectionName != "app.bsky.feed.generator" {
+			continue
+		}
+
+		uri, err := s.updateFeed(ctx, client, entry)
+		if err != nil {
+			return updated, fmt.Errorf("updating feed %s: %w", entry.ShortName, err)
+		}
+
+		updated[entry.ShortName] = uri
+	}
+
+	return updated, nil
+}
+
+func (s *Service) updateFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
+	description := entry.Description
+	record := &bsky.FeedGenerator{
+		Did:         s.serviceDID,
+		DisplayName: entry.DisplayName,
+		Description: &description,
+		CreatedAt:   s.now(),
+	}
+
+	input := &atproto.RepoPutRecord_Input{
+		Repo:       s.publisherDID,
+		Collection: entry.CollectionName,
+		Rkey:       entry.ShortName,
+		Record: &util.LexiconTypeDecoder{
+			Val: record,
+		},
+	}
+
+	out, err := atproto.RepoPutRecord(ctx, client, input)
+	if err != nil {
+		return "", err
+	}
+
+	return out.Uri, nil
+}
+
+// Delete iterates every feed entry and removes the corresponding
+// app.bsky.feed.generator record from the publisher's PDS using deleteRecord.
+// It returns the AT-URIs of the deleted feed generators keyed by short name.
+func (s *Service) Delete(ctx context.Context) (map[string]string, error) {
+	if s.pds == "" {
+		return nil, fmt.Errorf("auth.pds is required to delete feeds")
+	}
+	if s.publisherIdentifier == "" {
+		return nil, fmt.Errorf("auth.identifier is required to delete feeds")
+	}
+	if s.publisherPassword == "" {
+		return nil, fmt.Errorf("auth.password is required to delete feeds")
+	}
+
+	client := &xrpc.Client{
+		Host:      s.pds,
+		UserAgent: &s.userAgent,
+	}
+
+	session, err := atproto.ServerCreateSession(ctx, client, &atproto.ServerCreateSession_Input{
+		Identifier: s.publisherIdentifier,
+		Password:   s.publisherPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("authenticating with PDS %s: %w", s.pds, err)
+	}
+
+	client.Auth = &xrpc.AuthInfo{
+		AccessJwt:  session.AccessJwt,
+		RefreshJwt: session.RefreshJwt,
+		Handle:     session.Handle,
+		Did:        session.Did,
+	}
+
+	deleted := make(map[string]string)
+	for _, entry := range s.feeds {
+		if entry.CollectionName != "app.bsky.feed.generator" {
+			continue
+		}
+
+		uri, err := s.deleteFeed(ctx, client, entry)
+		if err != nil {
+			return deleted, fmt.Errorf("deleting feed %s: %w", entry.ShortName, err)
+		}
+
+		deleted[entry.ShortName] = uri
+	}
+
+	return deleted, nil
+}
+
+func (s *Service) deleteFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
+	uri := feedGeneratorURI(s.publisherDID, entry.ShortName)
+
+	input := &atproto.RepoDeleteRecord_Input{
+		Repo:       s.publisherDID,
+		Collection: entry.CollectionName,
+		Rkey:       entry.ShortName,
+	}
+
+	_, err := atproto.RepoDeleteRecord(ctx, client, input)
+	if err != nil {
+		return "", err
+	}
+
+	return uri, nil
 }
 
 func now() string {
