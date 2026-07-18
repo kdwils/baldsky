@@ -20,11 +20,11 @@ type RateLimiter struct {
 	maxAge   time.Duration
 }
 
-func NewRateLimiter(requestsPerSecond float64, burst int) *RateLimiter {
+func NewRateLimiter(requestsPerSecond float64, burst int, maxAge time.Duration) *RateLimiter {
 	rl := &RateLimiter{
 		rate:   rate.Limit(requestsPerSecond),
 		burst:  burst,
-		maxAge: 3 * time.Minute,
+		maxAge: maxAge,
 	}
 
 	rl.limiters = cache.New(

@@ -49,6 +49,7 @@ func initConfig() {
 	viper.SetDefault("server.log_level", "info")
 	viper.SetDefault("server.rate", 10.0)
 	viper.SetDefault("server.limit", 20)
+	viper.SetDefault("server.rate_max_age", "3m")
 	viper.SetDefault("database.dsn", "")
 	viper.SetDefault("database.reconnect_delay", "5s")
 	viper.SetDefault("feed.short_name", "")

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/kdwils/baldsky/feed"
@@ -42,7 +43,7 @@ func (m *mockFirehose) Connected() bool {
 
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200))
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute))
 	return srv, svc
 }
 
@@ -56,7 +57,7 @@ func TestNew(t *testing.T) {
 		db := &mockPingDB{}
 		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20))
+		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20, 3*time.Minute))
 		want := &Server{
 			port:       9090,
 			logger:     log,
@@ -95,7 +96,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200, 3*time.Minute))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -115,7 +116,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -135,7 +136,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -487,7 +488,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute))
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -511,7 +512,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute))
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})

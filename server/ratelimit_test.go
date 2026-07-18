@@ -14,7 +14,7 @@ import (
 
 func TestNewRateLimiter(t *testing.T) {
 	t.Run("sets rate and burst", func(t *testing.T) {
-		got := NewRateLimiter(10.0, 20)
+		got := NewRateLimiter(10.0, 20, 3*time.Minute)
 		want := &RateLimiter{
 			rate:     rate.Limit(10.0),
 			burst:    20,
@@ -27,7 +27,7 @@ func TestNewRateLimiter(t *testing.T) {
 
 func TestAllow(t *testing.T) {
 	t.Run("allows requests within burst", func(t *testing.T) {
-		rl := NewRateLimiter(100, 5)
+		rl := NewRateLimiter(100, 5, 3*time.Minute)
 
 		for range 5 {
 			got := rl.Allow("1.2.3.4")
@@ -36,7 +36,7 @@ func TestAllow(t *testing.T) {
 	})
 
 	t.Run("rejects after burst exhausted", func(t *testing.T) {
-		rl := NewRateLimiter(0.001, 1)
+		rl := NewRateLimiter(0.001, 1, 3*time.Minute)
 
 		got := rl.Allow("1.2.3.4")
 		assert.Equal(t, true, got)
@@ -46,7 +46,7 @@ func TestAllow(t *testing.T) {
 	})
 
 	t.Run("different ips have independent limits", func(t *testing.T) {
-		rl := NewRateLimiter(0.001, 1)
+		rl := NewRateLimiter(0.001, 1, 3*time.Minute)
 
 		got := rl.Allow("1.1.1.1")
 		assert.Equal(t, true, got)
@@ -64,7 +64,7 @@ func TestAllow(t *testing.T) {
 
 func TestGetLimiter(t *testing.T) {
 	t.Run("same ip returns same limiter", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 
 		first := rl.getLimiter("10.0.0.1")
 		got := rl.getLimiter("10.0.0.1")
@@ -73,7 +73,7 @@ func TestGetLimiter(t *testing.T) {
 	})
 
 	t.Run("different ips return different limiters", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 
 		a := rl.getLimiter("10.0.0.1")
 		b := rl.getLimiter("10.0.0.2")
@@ -81,7 +81,7 @@ func TestGetLimiter(t *testing.T) {
 	})
 
 	t.Run("concurrent access is safe", func(t *testing.T) {
-		rl := NewRateLimiter(100, 100)
+		rl := NewRateLimiter(100, 100, 3*time.Minute)
 
 		var wg sync.WaitGroup
 		for i := range 100 {
@@ -102,7 +102,7 @@ func TestGetLimiter(t *testing.T) {
 
 func TestPurgeStale(t *testing.T) {
 	t.Run("removes entries older than maxAge", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 		rl.maxAge = 1 * time.Hour
 
 		rl.Allow("old-ip")
@@ -122,7 +122,7 @@ func TestPurgeStale(t *testing.T) {
 	})
 
 	t.Run("keeps all entries within maxAge", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 		rl.maxAge = 1 * time.Hour
 
 		rl.Allow("ip-a")
@@ -137,7 +137,7 @@ func TestPurgeStale(t *testing.T) {
 
 func TestStartCleanup(t *testing.T) {
 	t.Run("purges stale entries on interval", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 		rl.maxAge = 1 * time.Millisecond
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 
@@ -154,7 +154,7 @@ func TestStartCleanup(t *testing.T) {
 	})
 
 	t.Run("stops on context cancel", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 		rl.maxAge = 1 * time.Millisecond
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 
@@ -169,7 +169,7 @@ func TestStartCleanup(t *testing.T) {
 	})
 
 	t.Run("does not remove recently used entries", func(t *testing.T) {
-		rl := NewRateLimiter(100, 10)
+		rl := NewRateLimiter(100, 10, 3*time.Minute)
 		rl.maxAge = 10 * time.Second
 		rl.limiters = newTestCache(rl, 1*time.Millisecond)
 

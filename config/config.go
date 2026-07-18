@@ -26,8 +26,9 @@ type ServerConfig struct {
 	UserAgent    string  `mapstructure:"user_agent"`
 	UserAgentURL string  `mapstructure:"user_agent_url"`
 	AdminToken   string  `mapstructure:"admin_token"`
-	Rate         float64 `mapstructure:"rate"`
-	Limit        int     `mapstructure:"limit"`
+	Rate         float64       `mapstructure:"rate"`
+	Limit        int           `mapstructure:"limit"`
+	RateMaxAge   time.Duration `mapstructure:"rate_max_age"`
 }
 
 type AuthConfig struct {
