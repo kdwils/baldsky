@@ -48,9 +48,6 @@ func feedURI(shortName string) string {
 	return "at://" + testPublisherDID + "/app.bsky.feed.generator/" + shortName
 }
 
-//go:fix inline
-func ptr[T any](v T) *T { return new(v) }
-
 func TestHostname(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
