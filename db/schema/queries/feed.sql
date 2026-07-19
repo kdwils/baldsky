@@ -39,8 +39,3 @@ ON CONFLICT (feed_name) DO UPDATE SET
 SELECT feed_name, total_views, last_viewed_at
 FROM feed_stats
 WHERE feed_name = $1;
-
--- name: GetFeedStatsAll :many
-SELECT feed_name, total_views, last_viewed_at
-FROM feed_stats
-ORDER BY total_views DESC;

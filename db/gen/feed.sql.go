@@ -107,35 +107,6 @@ func (q *Queries) GetFeedStats(ctx context.Context, feedName string) (FeedStat, 
 	return i, err
 }
 
-const getFeedStatsAll = `-- name: GetFeedStatsAll :many
-SELECT feed_name, total_views, last_viewed_at
-FROM feed_stats
-ORDER BY total_views DESC
-`
-
-func (q *Queries) GetFeedStatsAll(ctx context.Context) ([]FeedStat, error) {
-	rows, err := q.db.QueryContext(ctx, getFeedStatsAll)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []FeedStat
-	for rows.Next() {
-		var i FeedStat
-		if err := rows.Scan(&i.FeedName, &i.TotalViews, &i.LastViewedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const insertPost = `-- name: InsertPost :exec
 INSERT INTO post (uri, cid, indexed_at, feed_name)
 VALUES ($1, $2, $3, $4)

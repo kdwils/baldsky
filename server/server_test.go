@@ -704,8 +704,8 @@ func TestHandleGetFeedMetrics(t *testing.T) {
 	})
 }
 
-func TestWithViewTracking(t *testing.T) {
-	t.Run("records view for getFeedSkeleton", func(t *testing.T) {
+func TestViewTracking(t *testing.T) {
+	t.Run("records view on successful feed response", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -714,31 +714,23 @@ func TestWithViewTracking(t *testing.T) {
 		ms := feed.NewMetricsService(q, 10)
 
 		done := make(chan struct{})
-		ts := time.Now().UTC().Format(time.RFC3339)
-		q.EXPECT().RecordView(gomock.Any(), gen.RecordViewParams{
-			FeedName: "my-feed",
-			LastViewedAt: sql.NullString{
-				String: ts,
-				Valid:  true,
-			},
-		}).Do(func(_ context.Context, _ gen.RecordViewParams) {
-			close(done)
-		}).Return(nil)
+		q.EXPECT().RecordView(gomock.Any(), gomock.Any()).
+			Do(func(_ context.Context, _ gen.RecordViewParams) {
+				close(done)
+			}).Return(nil)
+
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:plc:abc/app.bsky.feed.generator/my-feed", "", "").
+			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
 
 		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
 
 		go ms.Run(t.Context())
 		defer ms.Close()
 
-		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		handler := srv.withViewTracking()(inner)
-
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:plc:abc/app.bsky.feed.generator/my-feed", nil)
 		w := httptest.NewRecorder()
 
-		handler.ServeHTTP(w, req)
+		srv.handleGetFeedSkeleton()(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
@@ -749,32 +741,25 @@ func TestWithViewTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("does not record view for other paths", func(t *testing.T) {
+	t.Run("no view recorded when metrics nil", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		q := feedmocks.NewMockQuerier(ctrl)
-		ms := feed.NewMetricsService(q, 10)
+		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:plc:abc/app.bsky.feed.generator/my-feed", "", "").
+			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
 
-		q.EXPECT().RecordView(gomock.Any(), gomock.Any()).Times(0)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), nil)
 
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
-
-		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		handler := srv.withViewTracking()(inner)
-
-		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.describeFeedGenerator", nil)
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:plc:abc/app.bsky.feed.generator/my-feed", nil)
 		w := httptest.NewRecorder()
 
-		handler.ServeHTTP(w, req)
+		srv.handleGetFeedSkeleton()(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
-	t.Run("empty feed param does not record view", func(t *testing.T) {
+	t.Run("no view recorded for empty feed param", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -786,17 +771,12 @@ func TestWithViewTracking(t *testing.T) {
 
 		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
 
-		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		handler := srv.withViewTracking()(inner)
-
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton", nil)
 		w := httptest.NewRecorder()
 
-		handler.ServeHTTP(w, req)
+		srv.handleGetFeedSkeleton()(w, req)
 
-		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 

@@ -114,21 +114,6 @@ func (mr *MockQuerierMockRecorder) GetFeedStats(ctx, feedName any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedStats", reflect.TypeOf((*MockQuerier)(nil).GetFeedStats), ctx, feedName)
 }
 
-// GetFeedStatsAll mocks base method.
-func (m *MockQuerier) GetFeedStatsAll(ctx context.Context) ([]gen.FeedStat, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFeedStatsAll", ctx)
-	ret0, _ := ret[0].([]gen.FeedStat)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetFeedStatsAll indicates an expected call of GetFeedStatsAll.
-func (mr *MockQuerierMockRecorder) GetFeedStatsAll(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedStatsAll", reflect.TypeOf((*MockQuerier)(nil).GetFeedStatsAll), ctx)
-}
-
 // InsertPost mocks base method.
 func (m *MockQuerier) InsertPost(ctx context.Context, arg gen.InsertPostParams) error {
 	m.ctrl.T.Helper()

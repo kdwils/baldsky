@@ -70,9 +70,12 @@ func (ms *MetricsService) GetFeedStats(ctx context.Context, feedName string) (Fe
 		return FeedStatsResponse{}, err
 	}
 
-	return FeedStatsResponse{
-		FeedName:     stats.FeedName,
-		TotalViews:   stats.TotalViews,
-		LastViewedAt: &stats.LastViewedAt.String,
-	}, nil
+	resp := FeedStatsResponse{
+		FeedName:   stats.FeedName,
+		TotalViews: stats.TotalViews,
+	}
+	if stats.LastViewedAt.Valid {
+		resp.LastViewedAt = &stats.LastViewedAt.String
+	}
+	return resp, nil
 }
