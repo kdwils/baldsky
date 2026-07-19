@@ -13,7 +13,9 @@ type Querier interface {
 	DeletePosts(ctx context.Context, uris []string) error
 	GetCursor(ctx context.Context, service string) (int64, error)
 	GetFeedPage(ctx context.Context, arg GetFeedPageParams) ([]GetFeedPageRow, error)
+	GetFeedStats(ctx context.Context, feedName string) (FeedStat, error)
 	InsertPost(ctx context.Context, arg InsertPostParams) error
+	RecordView(ctx context.Context, arg RecordViewParams) error
 	UpsertCursor(ctx context.Context, arg UpsertCursorParams) error
 }
 

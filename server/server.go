@@ -43,9 +43,10 @@ type Server struct {
 	firehose   FirehoseChecker
 	adminToken string
 	rl         *RateLimiter
+	metrics    *feed.MetricsService
 }
 
-func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string, rl *RateLimiter) *Server {
+func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string, rl *RateLimiter, metrics *feed.MetricsService) *Server {
 	return &Server{
 		port:       port,
 		logger:     logger,
@@ -54,6 +55,7 @@ func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose Fir
 		firehose:   firehose,
 		adminToken: adminToken,
 		rl:         rl,
+		metrics:    metrics,
 	}
 }
 
@@ -72,6 +74,7 @@ func (s *Server) Run(ctx context.Context) error {
 	admin := r.PathPrefix("/admin").Subrouter()
 	admin.Use(s.withBearerAuth())
 	admin.HandleFunc("/posts/{uri}", s.handleDeletePost()).Methods(http.MethodDelete)
+	admin.HandleFunc("/metrics/{feed}", s.handleGetFeedMetrics()).Methods(http.MethodGet)
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
@@ -201,6 +204,12 @@ func (s *Server) handleGetFeedSkeleton() http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, resp)
+
+		if s.metrics != nil {
+			if feedName := extractFeedName(feedParam); feedName != "" {
+				s.metrics.RecordView(r.Context(), feedName)
+			}
+		}
 	}
 }
 
@@ -239,5 +248,34 @@ func (s *Server) withRateLimit() func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func extractFeedName(feedURI string) string {
+	parts := strings.Split(strings.TrimPrefix(feedURI, "at://"), "/")
+	if len(parts) == 3 {
+		return parts[2]
+	}
+	return ""
+}
+
+func (s *Server) handleGetFeedMetrics() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		feedName := mux.Vars(r)["feed"]
+		if feedName == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing feed"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		stats, err := s.metrics.GetFeedStats(ctx, feedName)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, stats)
 	}
 }
