@@ -71,6 +71,9 @@ func newDB(t *testing.T) *sql.DB {
 	_, err = sqldb.Exec("TRUNCATE TABLE post")
 	require.NoError(t, err)
 
+	_, err = sqldb.Exec("TRUNCATE TABLE feed_stats")
+	require.NoError(t, err)
+
 	return sqldb
 }
 
@@ -107,7 +110,11 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18081)
 
@@ -129,6 +136,10 @@ func TestConformance(t *testing.T) {
 			},
 		}
 		assert.Equal(t, want, got)
+
+		stats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), stats.TotalViews)
 	})
 
 	t.Run("non matching feed returns empty", func(t *testing.T) {
@@ -146,7 +157,11 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18082)
 
@@ -181,7 +196,11 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18083)
 
@@ -205,6 +224,10 @@ func TestConformance(t *testing.T) {
 			},
 		}
 		assert.Equal(t, want, got)
+
+		stats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), stats.TotalViews)
 	})
 
 	t.Run("feed pagination with cursor", func(t *testing.T) {
@@ -223,7 +246,11 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18084)
 
@@ -267,6 +294,10 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, wantPage1, page1)
 		assert.Equal(t, wantPage2, page2)
+
+		stats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), stats.TotalViews)
 	})
 
 	t.Run("limit capped at 100", func(t *testing.T) {
@@ -285,7 +316,11 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18085)
 
@@ -322,6 +357,10 @@ func TestConformance(t *testing.T) {
 			Cursor: got.Cursor,
 		}
 		assert.Equal(t, want, got)
+
+		stats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), stats.TotalViews)
 	})
 
 	t.Run("deleted post no longer appears", func(t *testing.T) {
@@ -340,7 +379,11 @@ func TestConformance(t *testing.T) {
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 		feedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 
-		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18086)
 
@@ -376,6 +419,10 @@ func TestConformance(t *testing.T) {
 			Feed: []feed.FeedItem{},
 		}
 		assert.Equal(t, wantAfter, afterDelete)
+
+		stats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), stats.TotalViews)
 	})
 
 	t.Run("multiple pipelines are isolated", func(t *testing.T) {
@@ -396,7 +443,11 @@ func TestConformance(t *testing.T) {
 		baldFeedURI := "at://" + publisherDID + "/app.bsky.feed.generator/bald"
 		hairFeedURI := "at://" + publisherDID + "/app.bsky.feed.generator/hair"
 
-		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		ms := feed.NewMetricsService(queries, 10)
+		go ms.Run(ctx)
+		defer ms.Close()
+
+		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
 		go srv.Run(ctx)
 		waitForServer(t, 18087)
 
@@ -434,6 +485,14 @@ func TestConformance(t *testing.T) {
 			},
 		}
 		assert.Equal(t, wantHair, gotHair)
+
+		baldStats, err := queries.GetFeedStats(ctx, "bald")
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), baldStats.TotalViews)
+
+		hairStats, err := queries.GetFeedStats(ctx, "hair")
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), hairStats.TotalViews)
 	})
 
 	t.Run("health endpoints", func(t *testing.T) {
@@ -451,7 +510,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
 		go srv.Run(ctx)
 		waitForServer(t, 18088)
 
@@ -482,7 +541,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
 		go srv.Run(ctx)
 		waitForServer(t, 18089)
 
@@ -524,7 +583,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
 		go srv.Run(ctx)
 		waitForServer(t, 18090)
 
@@ -573,7 +632,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl)
+		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
 		go srv.Run(ctx)
 		waitForServer(t, 18091)
 

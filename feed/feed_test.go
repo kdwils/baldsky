@@ -109,7 +109,7 @@ func TestInsertPost(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		var captured gen.InsertPostParams
 		q.EXPECT().InsertPost(ctx, gomock.Any()).Do(func(_ context.Context, arg gen.InsertPostParams) {
@@ -133,7 +133,7 @@ func TestInsertPost(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().InsertPost(ctx, gomock.Any()).Return(errors.New("db error"))
 
@@ -149,7 +149,7 @@ func TestDeletePosts(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		gomock.InOrder(
 			q.EXPECT().DeletePost(ctx, "uri-1").Return(nil),
@@ -166,7 +166,7 @@ func TestDeletePosts(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		err := svc.DeletePosts(ctx, []string{})
 		require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestDeletePosts(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().DeletePost(ctx, "uri-1").Return(errors.New("delete failed"))
 
@@ -193,7 +193,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, "", "", "")
 		require.ErrorIs(t, err, feed.ErrUnknownFeed)
@@ -205,7 +205,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, "at://did/collection", "", "")
 		require.ErrorIs(t, err, feed.ErrUnknownFeed)
@@ -217,7 +217,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, "at://did:web:wrong.com/app.bsky.feed.generator/test-feed", "", "")
 		require.ErrorIs(t, err, feed.ErrUnknownFeed)
@@ -229,7 +229,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, "at://"+testPublisherDID+"/app.bsky.feed.generator/nonexistent", "", "")
 		require.ErrorIs(t, err, feed.ErrUnknownFeed)
@@ -241,7 +241,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, "at://"+testPublisherDID+"/app.bsky.feed.badcollection/test-feed", "", "")
 		require.ErrorIs(t, err, feed.ErrUnknownFeed)
@@ -253,7 +253,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		rows := []gen.GetFeedPageRow{
 			{Uri: "at://post1", Cid: "cid1", IndexedAt: "2024-01-01T00:00:00Z"},
@@ -284,7 +284,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		rows := []gen.GetFeedPageRow{
 			{Uri: "at://post2", Cid: "cid2", IndexedAt: "2024-01-02T00:00:00Z"},
@@ -313,7 +313,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, feedURI("test-feed"), "", "bad-cursor")
 		require.ErrorIs(t, err, feed.ErrInvalidCursor)
@@ -325,7 +325,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, feedURI("test-feed"), "", "2024-01-01T00:00:00Z::")
 		require.ErrorIs(t, err, feed.ErrInvalidCursor)
@@ -337,7 +337,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, _ := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		got, err := svc.GetFeedPage(ctx, feedURI("test-feed"), "", "::cid1")
 		require.ErrorIs(t, err, feed.ErrInvalidCursor)
@@ -349,7 +349,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -372,7 +372,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -395,7 +395,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -418,7 +418,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -441,7 +441,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -464,7 +464,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gen.GetFeedPageParams{
 			FeedName:        "test-feed",
@@ -487,7 +487,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		rows := []gen.GetFeedPageRow{
 			{Uri: "at://post1", Cid: "cid1", IndexedAt: "2024-01-01T00:00:00Z"},
@@ -516,7 +516,7 @@ func TestGetFeedPage(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetFeedPage(ctx, gomock.Any()).Return(nil, errors.New("db connection lost"))
 
@@ -533,7 +533,7 @@ func TestGetCursor(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(42), nil)
 
@@ -548,7 +548,7 @@ func TestGetCursor(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(0), sql.ErrNoRows)
 
@@ -563,7 +563,7 @@ func TestGetCursor(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().GetCursor(ctx, "bsky-appview").Return(int64(0), errors.New("timeout"))
 
@@ -579,7 +579,7 @@ func TestUpsertCursor(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().UpsertCursor(ctx, gen.UpsertCursorParams{
 			Service: "bsky-appview",
@@ -595,7 +595,7 @@ func TestUpsertCursor(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc, q := newTestFeedService(ctrl)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		q.EXPECT().UpsertCursor(ctx, gen.UpsertCursorParams{
 			Service: "bsky-appview",

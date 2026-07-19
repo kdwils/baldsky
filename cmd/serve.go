@@ -118,7 +118,11 @@ var serveCmd = &cobra.Command{
 
 		go sub.Listen(ctx)
 
-		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge))
+		metricsSvc := feed.NewMetricsService(querier, 1000)
+		go metricsSvc.Run(ctx)
+		defer metricsSvc.Close()
+
+		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
 		return srv.Run(ctx)
 	},
 }

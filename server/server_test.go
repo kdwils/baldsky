@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/kdwils/baldsky/db/gen"
 	"github.com/kdwils/baldsky/feed"
+	feedmocks "github.com/kdwils/baldsky/feed/mocks"
 	"github.com/kdwils/baldsky/logger"
 	"github.com/kdwils/baldsky/server/mocks"
 	"github.com/stretchr/testify/assert"
@@ -43,7 +46,7 @@ func (m *mockFirehose) Connected() bool {
 
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute))
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), nil)
 	return srv, svc
 }
 
@@ -57,7 +60,7 @@ func TestNew(t *testing.T) {
 		db := &mockPingDB{}
 		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20, 3*time.Minute))
+		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20, 3*time.Minute), nil)
 		want := &Server{
 			port:       9090,
 			logger:     log,
@@ -66,6 +69,7 @@ func TestNew(t *testing.T) {
 			firehose:   fh,
 			adminToken: "secret",
 			rl:         got.rl,
+			metrics:    nil,
 		}
 		assert.Equal(t, want, got)
 	})
@@ -96,7 +100,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200, 3*time.Minute))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -116,7 +120,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -136,7 +140,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -488,7 +492,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute), nil)
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -512,7 +516,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute))
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute), nil)
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -614,5 +618,206 @@ func TestHandleDeletePost(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Equal(t, map[string]string{"error": "internal server error"}, got)
+	})
+}
+
+func TestHandleGetFeedMetrics(t *testing.T) {
+	t.Run("missing feed returns 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		srv, _ := newTestServer(ctrl)
+		req := httptest.NewRequest(http.MethodGet, "/admin/metrics/", nil)
+		req = mux.SetURLVars(req, map[string]string{"feed": ""})
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedMetrics()(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "missing feed", body["error"])
+	})
+
+	t.Run("successful response", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		q := feedmocks.NewMockQuerier(ctrl)
+		ms := feed.NewMetricsService(q, 10)
+
+		now := "2024-01-01T00:00:00Z"
+		q.EXPECT().GetFeedStats(gomock.Any(), "my-feed").Return(gen.FeedStat{
+			FeedName:   "my-feed",
+			TotalViews: 100,
+			LastViewedAt: sql.NullString{
+				String: now,
+				Valid:  true,
+			},
+		}, nil)
+
+		srv := New(8080, slog.Default(), nil, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/metrics/my-feed", nil)
+		req = mux.SetURLVars(req, map[string]string{"feed": "my-feed"})
+		req.Header.Set("Authorization", "Bearer test-token")
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedMetrics()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var got feed.FeedStatsResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		want := feed.FeedStatsResponse{
+			FeedName:     "my-feed",
+			TotalViews:   100,
+			LastViewedAt: &now,
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("db error returns 500", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		q := feedmocks.NewMockQuerier(ctrl)
+		ms := feed.NewMetricsService(q, 10)
+
+		q.EXPECT().GetFeedStats(gomock.Any(), "my-feed").Return(gen.FeedStat{}, sql.ErrNoRows)
+
+		srv := New(8080, slog.Default(), nil, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/metrics/my-feed", nil)
+		req = mux.SetURLVars(req, map[string]string{"feed": "my-feed"})
+		req.Header.Set("Authorization", "Bearer test-token")
+		w := httptest.NewRecorder()
+
+		srv.handleGetFeedMetrics()(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "internal server error", body["error"])
+	})
+}
+
+func TestWithViewTracking(t *testing.T) {
+	t.Run("records view for getFeedSkeleton", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		q := feedmocks.NewMockQuerier(ctrl)
+		ms := feed.NewMetricsService(q, 10)
+
+		done := make(chan struct{})
+		ts := time.Now().UTC().Format(time.RFC3339)
+		q.EXPECT().RecordView(gomock.Any(), gen.RecordViewParams{
+			FeedName: "my-feed",
+			LastViewedAt: sql.NullString{
+				String: ts,
+				Valid:  true,
+			},
+		}).Do(func(_ context.Context, _ gen.RecordViewParams) {
+			close(done)
+		}).Return(nil)
+
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+
+		go ms.Run(t.Context())
+		defer ms.Close()
+
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withViewTracking()(inner)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:plc:abc/app.bsky.feed.generator/my-feed", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for RecordView to be called")
+		}
+	})
+
+	t.Run("does not record view for other paths", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		q := feedmocks.NewMockQuerier(ctrl)
+		ms := feed.NewMetricsService(q, 10)
+
+		q.EXPECT().RecordView(gomock.Any(), gomock.Any()).Times(0)
+
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withViewTracking()(inner)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.describeFeedGenerator", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("empty feed param does not record view", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		q := feedmocks.NewMockQuerier(ctrl)
+		ms := feed.NewMetricsService(q, 10)
+
+		q.EXPECT().RecordView(gomock.Any(), gomock.Any()).Times(0)
+
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		handler := srv.withViewTracking()(inner)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+func TestExtractFeedName(t *testing.T) {
+	t.Run("valid at-uri", func(t *testing.T) {
+		got := extractFeedName("at://did:plc:abc/app.bsky.feed.generator/my-feed")
+		assert.Equal(t, "my-feed", got)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		got := extractFeedName("")
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("non-at-uri", func(t *testing.T) {
+		got := extractFeedName("https://example.com/feed")
+		assert.Equal(t, "", got)
+	})
+
+	t.Run("too few parts", func(t *testing.T) {
+		got := extractFeedName("at://did:plc:abc/app.bsky.feed.generator")
+		assert.Equal(t, "", got)
 	})
 }

@@ -27,3 +27,20 @@ SELECT cursor FROM sub_state WHERE service = sqlc.arg('service');
 INSERT INTO sub_state (service, cursor)
 VALUES (sqlc.arg('service'), sqlc.arg('cursor'))
 ON CONFLICT (service) DO UPDATE SET cursor = excluded.cursor;
+
+-- name: RecordView :exec
+INSERT INTO feed_stats (feed_name, total_views, last_viewed_at)
+VALUES ($1, 1, $2)
+ON CONFLICT (feed_name) DO UPDATE SET
+    total_views = feed_stats.total_views + 1,
+    last_viewed_at = excluded.last_viewed_at;
+
+-- name: GetFeedStats :one
+SELECT feed_name, total_views, last_viewed_at
+FROM feed_stats
+WHERE feed_name = $1;
+
+-- name: GetFeedStatsAll :many
+SELECT feed_name, total_views, last_viewed_at
+FROM feed_stats
+ORDER BY total_views DESC;

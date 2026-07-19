@@ -94,6 +94,48 @@ func (q *Queries) GetFeedPage(ctx context.Context, arg GetFeedPageParams) ([]Get
 	return items, nil
 }
 
+const getFeedStats = `-- name: GetFeedStats :one
+SELECT feed_name, total_views, last_viewed_at
+FROM feed_stats
+WHERE feed_name = $1
+`
+
+func (q *Queries) GetFeedStats(ctx context.Context, feedName string) (FeedStat, error) {
+	row := q.db.QueryRowContext(ctx, getFeedStats, feedName)
+	var i FeedStat
+	err := row.Scan(&i.FeedName, &i.TotalViews, &i.LastViewedAt)
+	return i, err
+}
+
+const getFeedStatsAll = `-- name: GetFeedStatsAll :many
+SELECT feed_name, total_views, last_viewed_at
+FROM feed_stats
+ORDER BY total_views DESC
+`
+
+func (q *Queries) GetFeedStatsAll(ctx context.Context) ([]FeedStat, error) {
+	rows, err := q.db.QueryContext(ctx, getFeedStatsAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FeedStat
+	for rows.Next() {
+		var i FeedStat
+		if err := rows.Scan(&i.FeedName, &i.TotalViews, &i.LastViewedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertPost = `-- name: InsertPost :exec
 INSERT INTO post (uri, cid, indexed_at, feed_name)
 VALUES ($1, $2, $3, $4)
@@ -114,6 +156,24 @@ func (q *Queries) InsertPost(ctx context.Context, arg InsertPostParams) error {
 		arg.IndexedAt,
 		arg.FeedName,
 	)
+	return err
+}
+
+const recordView = `-- name: RecordView :exec
+INSERT INTO feed_stats (feed_name, total_views, last_viewed_at)
+VALUES ($1, 1, $2)
+ON CONFLICT (feed_name) DO UPDATE SET
+    total_views = feed_stats.total_views + 1,
+    last_viewed_at = excluded.last_viewed_at
+`
+
+type RecordViewParams struct {
+	FeedName     string         `json:"feed_name"`
+	LastViewedAt sql.NullString `json:"last_viewed_at"`
+}
+
+func (q *Queries) RecordView(ctx context.Context, arg RecordViewParams) error {
+	_, err := q.db.ExecContext(ctx, recordView, arg.FeedName, arg.LastViewedAt)
 	return err
 }
 

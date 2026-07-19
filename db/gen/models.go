@@ -4,6 +4,16 @@
 
 package gen
 
+import (
+	"database/sql"
+)
+
+type FeedStat struct {
+	FeedName     string         `json:"feed_name"`
+	TotalViews   int64          `json:"total_views"`
+	LastViewedAt sql.NullString `json:"last_viewed_at"`
+}
+
 type Post struct {
 	Uri       string `json:"uri"`
 	Cid       string `json:"cid"`

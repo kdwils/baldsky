@@ -99,6 +99,36 @@ func (mr *MockQuerierMockRecorder) GetFeedPage(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedPage", reflect.TypeOf((*MockQuerier)(nil).GetFeedPage), ctx, arg)
 }
 
+// GetFeedStats mocks base method.
+func (m *MockQuerier) GetFeedStats(ctx context.Context, feedName string) (gen.FeedStat, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFeedStats", ctx, feedName)
+	ret0, _ := ret[0].(gen.FeedStat)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFeedStats indicates an expected call of GetFeedStats.
+func (mr *MockQuerierMockRecorder) GetFeedStats(ctx, feedName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedStats", reflect.TypeOf((*MockQuerier)(nil).GetFeedStats), ctx, feedName)
+}
+
+// GetFeedStatsAll mocks base method.
+func (m *MockQuerier) GetFeedStatsAll(ctx context.Context) ([]gen.FeedStat, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFeedStatsAll", ctx)
+	ret0, _ := ret[0].([]gen.FeedStat)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFeedStatsAll indicates an expected call of GetFeedStatsAll.
+func (mr *MockQuerierMockRecorder) GetFeedStatsAll(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFeedStatsAll", reflect.TypeOf((*MockQuerier)(nil).GetFeedStatsAll), ctx)
+}
+
 // InsertPost mocks base method.
 func (m *MockQuerier) InsertPost(ctx context.Context, arg gen.InsertPostParams) error {
 	m.ctrl.T.Helper()
@@ -111,6 +141,20 @@ func (m *MockQuerier) InsertPost(ctx context.Context, arg gen.InsertPostParams) 
 func (mr *MockQuerierMockRecorder) InsertPost(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertPost", reflect.TypeOf((*MockQuerier)(nil).InsertPost), ctx, arg)
+}
+
+// RecordView mocks base method.
+func (m *MockQuerier) RecordView(ctx context.Context, arg gen.RecordViewParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordView", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordView indicates an expected call of RecordView.
+func (mr *MockQuerierMockRecorder) RecordView(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordView", reflect.TypeOf((*MockQuerier)(nil).RecordView), ctx, arg)
 }
 
 // UpsertCursor mocks base method.
