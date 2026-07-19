@@ -137,9 +137,10 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, want, got)
 
-		stats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), stats.TotalViews)
+		assert.Eventually(t, func() bool {
+			stats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && stats.TotalViews == 1
+		}, 5*time.Second, 10*time.Millisecond, "expected TotalViews to be 1")
 	})
 
 	t.Run("non matching feed returns empty", func(t *testing.T) {
@@ -225,9 +226,10 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, want, got)
 
-		stats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), stats.TotalViews)
+		assert.Eventually(t, func() bool {
+			stats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && stats.TotalViews == 1
+		}, 5*time.Second, 10*time.Millisecond, "expected TotalViews to be 1")
 	})
 
 	t.Run("feed pagination with cursor", func(t *testing.T) {
@@ -295,9 +297,10 @@ func TestConformance(t *testing.T) {
 		assert.Equal(t, wantPage1, page1)
 		assert.Equal(t, wantPage2, page2)
 
-		stats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(2), stats.TotalViews)
+		assert.Eventually(t, func() bool {
+			stats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && stats.TotalViews == 2
+		}, 5*time.Second, 10*time.Millisecond, "expected TotalViews to be 2")
 	})
 
 	t.Run("limit capped at 100", func(t *testing.T) {
@@ -358,9 +361,10 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, want, got)
 
-		stats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), stats.TotalViews)
+		assert.Eventually(t, func() bool {
+			stats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && stats.TotalViews == 1
+		}, 5*time.Second, 10*time.Millisecond, "expected TotalViews to be 1")
 	})
 
 	t.Run("deleted post no longer appears", func(t *testing.T) {
@@ -420,9 +424,10 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, wantAfter, afterDelete)
 
-		stats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(2), stats.TotalViews)
+		assert.Eventually(t, func() bool {
+			stats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && stats.TotalViews == 2
+		}, 5*time.Second, 10*time.Millisecond, "expected TotalViews to be 2")
 	})
 
 	t.Run("multiple pipelines are isolated", func(t *testing.T) {
@@ -486,13 +491,15 @@ func TestConformance(t *testing.T) {
 		}
 		assert.Equal(t, wantHair, gotHair)
 
-		baldStats, err := queries.GetFeedStats(ctx, "bald")
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), baldStats.TotalViews)
+		assert.Eventually(t, func() bool {
+			baldStats, err := queries.GetFeedStats(ctx, "bald")
+			return err == nil && baldStats.TotalViews == 1
+		}, 5*time.Second, 10*time.Millisecond, "expected bald TotalViews to be 1")
 
-		hairStats, err := queries.GetFeedStats(ctx, "hair")
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), hairStats.TotalViews)
+		assert.Eventually(t, func() bool {
+			hairStats, err := queries.GetFeedStats(ctx, "hair")
+			return err == nil && hairStats.TotalViews == 1
+		}, 5*time.Second, 10*time.Millisecond, "expected hair TotalViews to be 1")
 	})
 
 	t.Run("health endpoints", func(t *testing.T) {
