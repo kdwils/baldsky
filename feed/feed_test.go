@@ -573,6 +573,70 @@ func TestGetCursor(t *testing.T) {
 	})
 }
 
+func TestBuildDescription(t *testing.T) {
+	t.Run("no link URL", func(t *testing.T) {
+		gotDesc, gotFacets := feed.BuildDescription("Just a description", "", "")
+		wantDesc := "Just a description"
+		assert.Equal(t, wantDesc, gotDesc)
+		assert.Nil(t, gotFacets)
+	})
+
+	t.Run("with link URL", func(t *testing.T) {
+		gotDesc, gotFacets := feed.BuildDescription("Curated feed", "My Link", "https://example.com")
+		wantDesc := "Curated feed\n\nMy Link"
+		assert.Equal(t, wantDesc, gotDesc)
+		require.Len(t, gotFacets, 1)
+
+		facet := gotFacets[0]
+		require.NotNil(t, facet.Index)
+		assert.Equal(t, int64(14), facet.Index.ByteStart) // byte offset of "My Link"
+		assert.Equal(t, int64(21), facet.Index.ByteEnd)
+		require.Len(t, facet.Features, 1)
+
+		elem := facet.Features[0]
+		require.NotNil(t, elem.RichtextFacet_Link)
+		assert.Equal(t, "https://example.com", elem.RichtextFacet_Link.Uri)
+	})
+
+	t.Run("description with unicode characters", func(t *testing.T) {
+		gotDesc, gotFacets := feed.BuildDescription("café au lait", "Projet", "https://github.com/user/repo")
+		wantDesc := "café au lait\n\nProjet"
+		assert.Equal(t, wantDesc, gotDesc)
+		require.Len(t, gotFacets, 1)
+
+		facet := gotFacets[0]
+		require.NotNil(t, facet.Index)
+		// "café" is 5 bytes (c a f é = c3 a9), plus " au lait" = 8 bytes,
+		// plus "\n\n" is 2 bytes = 15 bytes total before the link label
+		assert.Equal(t, int64(15), facet.Index.ByteStart)
+		assert.Equal(t, int64(21), facet.Index.ByteEnd)
+	})
+
+	t.Run("empty description with link", func(t *testing.T) {
+		gotDesc, gotFacets := feed.BuildDescription("", "GitHub", "https://github.com/kdwils/baldsky")
+		wantDesc := "\n\nGitHub"
+		assert.Equal(t, wantDesc, gotDesc)
+		require.Len(t, gotFacets, 1)
+
+		facet := gotFacets[0]
+		require.NotNil(t, facet.Index)
+		assert.Equal(t, int64(2), facet.Index.ByteStart)
+		assert.Equal(t, int64(8), facet.Index.ByteEnd)
+	})
+
+	t.Run("long multi-line description with link", func(t *testing.T) {
+		gotDesc, gotFacets := feed.BuildDescription("Line one\nLine two\nLine three", "Click Here", "https://example.com/path?q=1")
+		wantDesc := "Line one\nLine two\nLine three\n\nClick Here"
+		assert.Equal(t, wantDesc, gotDesc)
+		require.Len(t, gotFacets, 1)
+
+		facet := gotFacets[0]
+		require.NotNil(t, facet.Index)
+		assert.Equal(t, int64(30), facet.Index.ByteStart)
+		assert.Equal(t, int64(40), facet.Index.ByteEnd)
+	})
+}
+
 func TestUpsertCursor(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

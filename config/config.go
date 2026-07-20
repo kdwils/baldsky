@@ -56,6 +56,8 @@ type PipelineConfig struct {
 	IgnoreBots      bool     `mapstructure:"ignore_bots"`
 	CollectionName  string   `mapstructure:"collection_name"`
 	Languages       []string `mapstructure:"languages"`
+	LinkLabel       string   `mapstructure:"link_label"`
+	LinkURL         string   `mapstructure:"link_url"`
 }
 
 type SubscriptionConfig struct {

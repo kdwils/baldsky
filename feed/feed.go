@@ -80,6 +80,8 @@ type FeedEntry struct {
 	DisplayName    string
 	Description    string
 	CollectionName string
+	LinkLabel string
+	LinkURL   string
 }
 
 type Service struct {
@@ -342,12 +344,13 @@ func (s *Service) Publish(ctx context.Context) (map[string]string, error) {
 }
 
 func (s *Service) publishFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
-	description := entry.Description
+	description, facets := BuildDescription(entry.Description, entry.LinkLabel, entry.LinkURL)
 	record := &bsky.FeedGenerator{
-		Did:         s.serviceDID,
-		DisplayName: entry.DisplayName,
-		Description: &description,
-		CreatedAt:   s.now(),
+		Did:               s.serviceDID,
+		DisplayName:       entry.DisplayName,
+		Description:       &description,
+		DescriptionFacets: facets,
+		CreatedAt:         s.now(),
 	}
 
 	input := &atproto.RepoCreateRecord_Input{
@@ -419,18 +422,25 @@ func (s *Service) Update(ctx context.Context) (map[string]string, error) {
 }
 
 func (s *Service) updateFeed(ctx context.Context, client *xrpc.Client, entry FeedEntry) (string, error) {
-	description := entry.Description
+	description, facets := BuildDescription(entry.Description, entry.LinkLabel, entry.LinkURL)
 	record := &bsky.FeedGenerator{
-		Did:         s.serviceDID,
-		DisplayName: entry.DisplayName,
-		Description: &description,
-		CreatedAt:   s.now(),
+		Did:               s.serviceDID,
+		DisplayName:       entry.DisplayName,
+		Description:       &description,
+		DescriptionFacets: facets,
+		CreatedAt:         s.now(),
+	}
+
+	existing, err := atproto.RepoGetRecord(ctx, client, "", entry.CollectionName, s.publisherDID, entry.ShortName)
+	if err != nil {
+		return "", fmt.Errorf("fetching current record: %w", err)
 	}
 
 	input := &atproto.RepoPutRecord_Input{
 		Repo:       s.publisherDID,
 		Collection: entry.CollectionName,
 		Rkey:       entry.ShortName,
+		SwapRecord: existing.Cid,
 		Record: &util.LexiconTypeDecoder{
 			Val: record,
 		},
@@ -510,6 +520,32 @@ func (s *Service) deleteFeed(ctx context.Context, client *xrpc.Client, entry Fee
 	}
 
 	return uri, nil
+}
+
+func BuildDescription(description, linkLabel, linkURL string) (string, []*bsky.RichtextFacet) {
+	if linkURL == "" {
+		return description, nil
+	}
+	suffix := "\n\n" + linkLabel
+	full := description + suffix
+	prefix := []byte(description + "\n\n")
+	start := int64(len(prefix))
+	end := int64(len(prefix) + len([]byte(linkLabel)))
+	return full, []*bsky.RichtextFacet{
+		{
+			Index: &bsky.RichtextFacet_ByteSlice{
+				ByteStart: start,
+				ByteEnd:   end,
+			},
+			Features: []*bsky.RichtextFacet_Features_Elem{
+				{
+					RichtextFacet_Link: &bsky.RichtextFacet_Link{
+						Uri: linkURL,
+					},
+				},
+			},
+		},
+	}
 }
 
 func now() string {

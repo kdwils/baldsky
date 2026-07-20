@@ -44,6 +44,8 @@ func runPublishFeed(cmd *cobra.Command, args []string) error {
 			DisplayName:    p.DisplayName,
 			Description:    p.Description,
 			CollectionName: p.CollectionName,
+			LinkLabel:      p.LinkLabel,
+			LinkURL:        p.LinkURL,
 		})
 	}
 
@@ -108,6 +110,8 @@ func runUpdateFeed(cmd *cobra.Command, args []string) error {
 			DisplayName:    p.DisplayName,
 			Description:    p.Description,
 			CollectionName: p.CollectionName,
+			LinkLabel:      p.LinkLabel,
+			LinkURL:        p.LinkURL,
 		})
 	}
 
@@ -172,6 +176,8 @@ func runDeleteFeed(cmd *cobra.Command, args []string) error {
 			DisplayName:    p.DisplayName,
 			Description:    p.Description,
 			CollectionName: p.CollectionName,
+			LinkLabel:      p.LinkLabel,
+			LinkURL:        p.LinkURL,
 		})
 	}
 
