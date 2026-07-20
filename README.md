@@ -14,8 +14,8 @@ Posts are filtered through a pipeline: DID blocklist, optional media/language re
 - [pgx](https://github.com/jackc/pgx)
 - [sqlc](https://github.com/sqlc-dev/sqlc)
 - [golang-migrate](https://github.com/golang-migrate/migrate)
-- [Cobra](https://github.com/spf13/cobra)
-- [Viper](https://github.com/spf13/viper)
+- [cobra](https://github.com/spf13/cobra)
+- [viper](https://github.com/spf13/viper)
 - [gomock](https://go.uber.org/mock)
 - [testify](https://github.com/stretchr/testify)
 - Docker
