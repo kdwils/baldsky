@@ -61,6 +61,8 @@ var serveCmd = &cobra.Command{
 				DisplayName:    p.DisplayName,
 				Description:    p.Description,
 				CollectionName: p.CollectionName,
+				LinkLabel:      p.LinkLabel,
+				LinkURL:        p.LinkURL,
 			})
 		}
 
