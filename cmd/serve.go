@@ -30,6 +30,10 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
+		if !cfg.Server.Enabled && !cfg.Subscription.Enabled {
+			return fmt.Errorf("both server and subscription are disabled; nothing to do")
+		}
+
 		log := logger.New(cfg.Server.LogLevel)
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,7 +54,6 @@ var serveCmd = &cobra.Command{
 		querier := gen.New(postgres.DB)
 
 		feedEntries := make([]feed.FeedEntry, 0, len(cfg.Pipelines))
-		pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
 
 		for _, p := range cfg.Pipelines {
 			if !p.Enabled {
@@ -82,49 +85,61 @@ var serveCmd = &cobra.Command{
 			),
 		)
 
-		for _, p := range cfg.Pipelines {
-			if !p.Enabled {
-				continue
-			}
-			pipeline, err := subscription.NewPipeline(
-				p.ShortName,
-				p.Keywords,
-				p.ExcludeKeywords,
-				p.ContextKeywords,
-				p.ContextWords,
-				p.BlockDIDs,
-				p.Languages,
-				p.RequireMedia,
-				feedSvc,
-			)
-			if err != nil {
-				return err
-			}
-			pipelines = append(pipelines, pipeline)
-		}
-
 		if cfg.Server.UserAgent == "" {
 			return fmt.Errorf("user_agent is required")
 		}
-
-		sub := subscription.New(
-			pipelines,
-			feedSvc,
-			websocket.DefaultDialer,
-			cfg.Subscription.Endpoint,
-			cfg.Subscription.Concurrency,
-			cfg.Subscription.QueueSize,
-			cfg.Subscription.ReconnectDelay,
-			subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
-		)
-
-		go sub.Listen(ctx)
 
 		metricsSvc := feed.NewMetricsService(querier, 1000)
 		go metricsSvc.Run(ctx)
 		defer metricsSvc.Close()
 
-		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
+		if cfg.Subscription.Enabled {
+			pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
+
+			for _, p := range cfg.Pipelines {
+				if !p.Enabled {
+					continue
+				}
+				pipeline, err := subscription.NewPipeline(
+					p.ShortName,
+					p.Keywords,
+					p.ExcludeKeywords,
+					p.ContextKeywords,
+					p.ContextWords,
+					p.BlockDIDs,
+					p.Languages,
+					p.RequireMedia,
+					feedSvc,
+				)
+				if err != nil {
+					return err
+				}
+				pipelines = append(pipelines, pipeline)
+			}
+
+			sub := subscription.New(
+				pipelines,
+				feedSvc,
+				websocket.DefaultDialer,
+				cfg.Subscription.Endpoint,
+				cfg.Subscription.Concurrency,
+				cfg.Subscription.QueueSize,
+				cfg.Subscription.ReconnectDelay,
+				subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
+			)
+
+			go sub.Listen(ctx)
+
+			if !cfg.Server.Enabled {
+				<-ctx.Done()
+				return nil
+			}
+
+			srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
+			return srv.Run(ctx)
+		}
+
+		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, nil, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
 		return srv.Run(ctx)
 	},
 }

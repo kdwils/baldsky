@@ -16,6 +16,7 @@ type Config struct {
 }
 
 type ServerConfig struct {
+	Enabled      bool    `mapstructure:"enabled"`
 	Port         int     `mapstructure:"port"`
 	LogLevel     string  `mapstructure:"log_level"`
 	Hostname     string  `mapstructure:"hostname"`
@@ -61,6 +62,7 @@ type PipelineConfig struct {
 }
 
 type SubscriptionConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
 	Endpoint       string        `mapstructure:"endpoint"`
 	ReconnectDelay time.Duration `mapstructure:"reconnect_delay"`
 	Concurrency    int           `mapstructure:"concurrency"`

@@ -45,6 +45,7 @@ func initConfig() {
 		viper.SetConfigType("yaml")
 	}
 
+	viper.SetDefault("server.enabled", true)
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.log_level", "info")
 	viper.SetDefault("server.admin_token", "")
@@ -59,6 +60,7 @@ func initConfig() {
 	viper.SetDefault("feed.did_context", "https://www.w3.org/ns/did/v1")
 	viper.SetDefault("feed.service_id", "#bsky_fg")
 	viper.SetDefault("feed.collection_name", "app.bsky.feed.generator")
+	viper.SetDefault("subscription.enabled", true)
 	viper.SetDefault("subscription.endpoint", "wss://bsky.network")
 	viper.SetDefault("subscription.reconnect_delay", "5s")
 	viper.SetDefault("subscription.concurrency", 4)
