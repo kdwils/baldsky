@@ -10,14 +10,15 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/kdwils/baldsky/config"
-	"github.com/kdwils/baldsky/logger"
 	fh "github.com/kdwils/baldsky/firehose"
+	"github.com/kdwils/baldsky/logger"
 )
 
 type Worker struct {
 	processor   fh.Processor
 	cursorStore fh.CursorStore
 	nc          *nats.Conn
+	name        string
 	subject     string
 	queueGroup  string
 	service     string
@@ -37,6 +38,7 @@ func New(processor fh.Processor, service string, natsCfg config.NATSConfig, curs
 		processor:   processor,
 		cursorStore: cursorStore,
 		nc:          nc,
+		name:        name,
 		subject:     natsCfg.Subject,
 		queueGroup:  natsCfg.QueueGroup,
 		service:     service,
@@ -48,8 +50,10 @@ func (w *Worker) Connected() bool {
 }
 
 func (w *Worker) Run(ctx context.Context) {
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With("name", w.name, "subject", w.subject, "queue_group", w.queueGroup)
 	defer w.nc.Close()
+
+	log.Info("worker starting")
 
 	procCtx := context.WithoutCancel(ctx)
 
@@ -60,25 +64,31 @@ func (w *Worker) Run(ctx context.Context) {
 			return
 		}
 		if err := w.processor.ProcessEvent(procCtx, &evt); err != nil {
-			log.Error("failed to process event", "err", err)
+			log.Error("failed to process event", "seq", evt.Seq, "repo", evt.Repo, "err", err)
 			return
 		}
 		if w.cursorStore != nil {
 			if err := w.cursorStore.UpsertCursor(procCtx, w.service, evt.Seq); err != nil {
-				log.Warn("failed to update cursor", "seq", evt.Seq, "err", err)
+				log.Warn("failed to update cursor", "seq", evt.Seq, "service", w.service, "err", err)
+				return
 			}
 		}
+
+		log.Info("processed event")
 	})
 	if err != nil {
-		log.Error("failed to subscribe", "err", err)
+		log.Error("failed to subscribe to NATS", "err", err)
 		return
 	}
 
 	w.connected.Store(true)
 	defer w.connected.Store(false)
 
+	log.Info("worker subscribed")
+
 	<-ctx.Done()
 	if err := sub.Drain(); err != nil {
 		log.Error("failed to drain subscription", "err", err)
 	}
+	log.Info("drained subscription")
 }

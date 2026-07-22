@@ -54,8 +54,9 @@ func (p *Publisher) Connected() bool {
 }
 
 func (p *Publisher) Listen(ctx context.Context) {
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With("subject", p.subject)
 	defer p.nc.Close()
+	log.Info("publisher listening")
 	for {
 		if err := p.subscribe(ctx); err != nil {
 			if ctx.Err() != nil {
@@ -72,10 +73,13 @@ func (p *Publisher) Listen(ctx context.Context) {
 }
 
 func (p *Publisher) subscribe(ctx context.Context) error {
+	log := logger.FromContext(ctx).With("subject", p.subject)
 	cursor, err := p.cursorStore.GetCursor(ctx, p.firehose.Service())
 	if err != nil {
+		log.Error("failed to get cursor", "err", err)
 		return fmt.Errorf("getting cursor: %w", err)
 	}
+	log.Info("publisher connecting to firehose", "cursor", cursor)
 	return p.firehose.Run(ctx, cursor, p.handleCommit)
 }
 
@@ -86,23 +90,35 @@ func (p *Publisher) handleCommit(ctx context.Context, evt *comatproto.SyncSubscr
 		return nil
 	}
 
+	if evt.TooBig {
+		log.Warn("skipping too-big event", "seq", evt.Seq, "repo", evt.Repo)
+		if err := p.cursorStore.UpsertCursor(ctx, p.firehose.Service(), evt.Seq); err != nil {
+			return fmt.Errorf("upsert cursor: %w", err)
+		}
+		return nil
+	}
+
 	var buf bytes.Buffer
 	if err := evt.MarshalCBOR(&buf); err != nil {
+		log.Error("failed to marshal event", "seq", evt.Seq, "repo", evt.Repo, "err", err)
 		return fmt.Errorf("marshal event: %w", err)
 	}
 
 	if err := p.nc.Publish(p.subject, buf.Bytes()); err != nil {
+		log.Error("failed to publish event to NATS", "seq", evt.Seq, "repo", evt.Repo, "subject", p.subject, "err", err)
 		return fmt.Errorf("publish: %w", err)
 	}
 
 	if err := p.nc.FlushTimeout(p.flushTimeout); err != nil {
+		log.Error("failed to flush NATS", "seq", evt.Seq, "repo", evt.Repo, "err", err)
 		return fmt.Errorf("flush: %w", err)
 	}
 
 	if err := p.cursorStore.UpsertCursor(ctx, p.firehose.Service(), evt.Seq); err != nil {
+		log.Error("failed to upsert cursor", "seq", evt.Seq, "repo", evt.Repo, "err", err)
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 
-	log.Debug("event published", "seq", evt.Seq, "repo", evt.Repo)
+	log.Info("event published", "seq", evt.Seq, "repo", evt.Repo)
 	return nil
 }

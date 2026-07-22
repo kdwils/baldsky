@@ -47,15 +47,23 @@ var serveCmd = &cobra.Command{
 
 		ctx = logger.WithContext(ctx, log)
 
+		log.Info("starting serve")
+
 		postgres, err := db.New(ctx, cfg.Database.DSN, cfg.Database.ReconnectDelay)
 		if err != nil {
+			log.Error("failed to connect to database", "err", err)
 			return err
 		}
 		defer postgres.Close()
 
+		log.Info("database connected")
+
 		if err := postgres.Migrate(); err != nil {
+			log.Error("failed to run database migrations", "err", err)
 			return err
 		}
+
+		log.Info("database migrations complete")
 
 		querier := gen.New(postgres.DB)
 
@@ -92,6 +100,7 @@ var serveCmd = &cobra.Command{
 		)
 
 		if cfg.Server.UserAgent == "" {
+			log.Error("user_agent is required")
 			return fmt.Errorf("user_agent is required")
 		}
 
@@ -106,6 +115,7 @@ var serveCmd = &cobra.Command{
 		var workers []*worker.Worker
 
 		if cfg.Publisher.Enabled {
+			log.Info("starting publisher", "nats_url", cfg.NATS.URL, "nats_subject", cfg.NATS.Subject)
 			firehose := fh.NewFirehoseConn(
 				websocket.DefaultDialer,
 				cfg.Subscription.Endpoint,
@@ -127,14 +137,17 @@ var serveCmd = &cobra.Command{
 				pubName,
 			)
 			if err != nil {
+				log.Error("failed to create publisher", "err", err)
 				return err
 			}
 			go pub.Listen(ctx)
 		}
 
 		if cfg.Worker.Enabled {
+			log.Info("starting workers", "count", cfg.Worker.Count, "nats_url", cfg.NATS.URL, "nats_subject", cfg.NATS.Subject, "queue_group", cfg.NATS.QueueGroup)
 			pipelines, err := buildPipelines(cfg, feedSvc)
 			if err != nil {
+				log.Error("failed to build pipelines", "err", err)
 				return err
 			}
 
@@ -147,6 +160,7 @@ var serveCmd = &cobra.Command{
 				}
 				w, err := worker.New(proc, cfg.Subscription.Endpoint, cfg.NATS, feedSvc, name)
 				if err != nil {
+					log.Error("failed to create worker", "name", name, "err", err)
 					return err
 				}
 				workers = append(workers, w)
@@ -155,8 +169,10 @@ var serveCmd = &cobra.Command{
 		}
 
 		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled && !cfg.Worker.Enabled {
+			log.Info("starting standalone subscription", "endpoint", cfg.Subscription.Endpoint)
 			pipelines, err := buildPipelines(cfg, feedSvc)
 			if err != nil {
+				log.Error("failed to build pipelines", "err", err)
 				return err
 			}
 
@@ -196,6 +212,7 @@ var serveCmd = &cobra.Command{
 		serverOpts = append(serverOpts, server.WithMetrics(metricsSvc))
 
 		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), serverOpts...)
+		log.Info("server starting", "port", cfg.Server.Port)
 		return srv.Run(ctx)
 	},
 }
