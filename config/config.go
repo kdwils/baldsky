@@ -19,9 +19,11 @@ type Config struct {
 }
 
 type NATSConfig struct {
-	URL        string `mapstructure:"url"`
-	Subject    string `mapstructure:"subject"`
-	QueueGroup string `mapstructure:"queue_group"`
+	URL           string        `mapstructure:"url"`
+	Subject       string        `mapstructure:"subject"`
+	QueueGroup    string        `mapstructure:"queue_group"`
+	ReconnectWait time.Duration `mapstructure:"reconnect_wait"`
+	NamePrefix    string        `mapstructure:"name_prefix"`
 }
 
 type PublisherConfig struct {
@@ -31,6 +33,7 @@ type PublisherConfig struct {
 
 type WorkerConfig struct {
 	Enabled bool `mapstructure:"enabled"`
+	Count   int  `mapstructure:"count"`
 }
 
 type ServerConfig struct {

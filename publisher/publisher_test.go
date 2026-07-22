@@ -25,10 +25,11 @@ func TestNew(t *testing.T) {
 		firehoseConn := fh.NewFirehoseConn(nil, "wss://bsky.network", "test/1.0", 4, 100)
 
 		_, err := New(cursorStore, firehoseConn, config.NATSConfig{
-			URL:        "nats://invalid-host:9999",
-			Subject:    "firehose.events",
-			QueueGroup: "baldsky-workers",
-		}, 5*time.Second, 5*time.Second)
+			URL:           "nats://invalid-host:9999",
+			Subject:       "firehose.events",
+			QueueGroup:    "baldsky-workers",
+			ReconnectWait: 2 * time.Second,
+		}, 5*time.Second, 5*time.Second, "baldsky-publisher")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to NATS")

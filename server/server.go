@@ -43,7 +43,7 @@ type Server struct {
 	svc        FeedService
 	db         PingDB
 	firehose   FirehoseChecker
-	worker     WorkerChecker
+	workers    []WorkerChecker
 	adminToken string
 	rl         *RateLimiter
 	metrics    *feed.MetricsService
@@ -56,7 +56,7 @@ func WithFirehose(fh FirehoseChecker) Option {
 }
 
 func WithWorker(w WorkerChecker) Option {
-	return func(s *Server) { s.worker = w }
+	return func(s *Server) { s.workers = append(s.workers, w) }
 }
 
 func WithMetrics(m *feed.MetricsService) Option {
@@ -171,7 +171,13 @@ func (s *Server) healthz() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dbOK := s.db.PingContext(r.Context()) == nil
 		fhOK := s.firehose != nil && s.firehose.Connected()
-		wOK := s.worker != nil && s.worker.Connected()
+		wOK := len(s.workers) > 0
+		for _, wr := range s.workers {
+			if !wr.Connected() {
+				wOK = false
+				break
+			}
+		}
 
 		status := http.StatusOK
 		if !dbOK || (!fhOK && !wOK) {

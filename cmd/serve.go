@@ -103,7 +103,7 @@ var serveCmd = &cobra.Command{
 
 		var sub *subscription.Subscription
 		var pub *publisher.Publisher
-		var w *worker.Worker
+		var workers []*worker.Worker
 
 		if cfg.Publisher.Enabled {
 			firehose := fh.NewFirehoseConn(
@@ -114,12 +114,17 @@ var serveCmd = &cobra.Command{
 				cfg.Subscription.QueueSize,
 			)
 
+			pubName := "publisher"
+			if cfg.NATS.NamePrefix != "" {
+				pubName = cfg.NATS.NamePrefix + "-publisher"
+			}
 			pub, err = publisher.New(
 				feedSvc,
 				firehose,
 				cfg.NATS,
 				cfg.Subscription.ReconnectDelay,
 				cfg.Publisher.FlushTimeout,
+				pubName,
 			)
 			if err != nil {
 				return err
@@ -135,11 +140,18 @@ var serveCmd = &cobra.Command{
 
 			proc := subscription.NewProcessor(pipelines)
 
-			w, err = worker.New(proc, cfg.Subscription.Endpoint, cfg.NATS, feedSvc)
-			if err != nil {
-				return err
+			for i := 0; i < cfg.Worker.Count; i++ {
+				name := fmt.Sprintf("worker-%d", i)
+				if cfg.NATS.NamePrefix != "" {
+					name = fmt.Sprintf("%s-worker-%d", cfg.NATS.NamePrefix, i)
+				}
+				w, err := worker.New(proc, cfg.Subscription.Endpoint, cfg.NATS, feedSvc, name)
+				if err != nil {
+					return err
+				}
+				workers = append(workers, w)
+				go w.Run(ctx)
 			}
-			go w.Run(ctx)
 		}
 
 		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled {
@@ -178,7 +190,7 @@ var serveCmd = &cobra.Command{
 		if pub != nil {
 			serverOpts = append(serverOpts, server.WithFirehose(pub))
 		}
-		if w != nil {
+		for _, w := range workers {
 			serverOpts = append(serverOpts, server.WithWorker(w))
 		}
 		serverOpts = append(serverOpts, server.WithMetrics(metricsSvc))

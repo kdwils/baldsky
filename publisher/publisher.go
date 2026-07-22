@@ -29,11 +29,12 @@ func New(
 	natsCfg config.NATSConfig,
 	reconnectDelay time.Duration,
 	flushTimeout time.Duration,
+	name string,
 ) (*Publisher, error) {
 	nc, err := nats.Connect(natsCfg.URL,
-		nats.Name("baldsky-publisher"),
+		nats.Name(name),
 		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
+		nats.ReconnectWait(natsCfg.ReconnectWait),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)

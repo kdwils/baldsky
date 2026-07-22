@@ -71,9 +71,12 @@ func initConfig() {
 	viper.SetDefault("nats.url", "")
 	viper.SetDefault("nats.subject", "firehose.events")
 	viper.SetDefault("nats.queue_group", "")
+	viper.SetDefault("nats.reconnect_wait", "2s")
+	viper.SetDefault("nats.name_prefix", "baldsky")
 	viper.SetDefault("publisher.enabled", false)
 	viper.SetDefault("publisher.flush_timeout", "5s")
 	viper.SetDefault("worker.enabled", false)
+	viper.SetDefault("worker.count", 1)
 
 	viper.SetEnvPrefix("BALDSKY")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/nats-io/nats.go"
@@ -25,11 +24,11 @@ type Worker struct {
 	connected   atomic.Bool
 }
 
-func New(processor fh.Processor, service string, natsCfg config.NATSConfig, cursorStore fh.CursorStore) (*Worker, error) {
+func New(processor fh.Processor, service string, natsCfg config.NATSConfig, cursorStore fh.CursorStore, name string) (*Worker, error) {
 	nc, err := nats.Connect(natsCfg.URL,
-		nats.Name("baldsky-worker"),
+		nats.Name(name),
 		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
+		nats.ReconnectWait(natsCfg.ReconnectWait),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)
