@@ -72,6 +72,8 @@ func (w *Worker) Run(ctx context.Context) {
 				log.Warn("failed to update cursor", "seq", evt.Seq, "service", w.service, "err", err)
 			}
 		}
+
+		log.Info("processed event")
 	})
 	if err != nil {
 		log.Error("failed to subscribe to NATS", "err", err)
