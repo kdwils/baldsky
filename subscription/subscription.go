@@ -4,44 +4,32 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/bluesky-social/indigo/repo"
-	"github.com/gorilla/websocket"
 
 	"github.com/kdwils/baldsky/logger"
+	fh "github.com/kdwils/baldsky/firehose"
 	"github.com/kdwils/baldsky/version"
 )
 
-func BuildUserAgent(name, url string) string {
-	return name + "/" + version.Version + " (+" + url + ")"
+// Processor parses CAR blocks, runs pipeline matching, and inserts/deletes posts.
+type Processor struct {
+	pipelines []Pipeline
 }
 
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
-
-type Dialer interface {
-	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
+func NewProcessor(pipelines []Pipeline) *Processor {
+	return &Processor{pipelines: pipelines}
 }
 
 type PipelineStore interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
 	DeletePosts(ctx context.Context, uris []string) error
-}
-
-type CursorStore interface {
-	GetCursor(ctx context.Context, service string) (int64, error)
-	UpsertCursor(ctx context.Context, service string, cursor int64) error
 }
 
 type Pipeline struct {
@@ -194,107 +182,27 @@ func (p *Pipeline) MatchesPost(text string, langs []string, hasEmbed bool) bool 
 }
 
 type Subscription struct {
-	pipelines      []Pipeline
-	dialer         Dialer
-	service        string
-	cursorStore    CursorStore
-	concurrency    int
-	queueSize      int
+	*Processor
+	firehose      *fh.FirehoseConn
+	cursorStore   fh.CursorStore
 	reconnectDelay time.Duration
-	userAgent      string
-	connected      atomic.Bool
 }
 
 func (s *Subscription) Connected() bool {
-	return s.connected.Load()
+	return s.firehose.Connected()
 }
 
-func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, concurrency, queueSize int, reconnectDelay time.Duration, userAgent string) *Subscription {
+func New(pipelines []Pipeline, cursorStore fh.CursorStore, firehose *fh.FirehoseConn, reconnectDelay time.Duration) *Subscription {
 	return &Subscription{
-		pipelines:      pipelines,
-		dialer:         dialer,
-		service:        service,
+		Processor:      NewProcessor(pipelines),
+		firehose:       firehose,
 		cursorStore:    cursorStore,
-		concurrency:    concurrency,
-		queueSize:      queueSize,
 		reconnectDelay: reconnectDelay,
-		userAgent:      userAgent,
 	}
 }
 
-func (s *Subscription) Listen(ctx context.Context) {
-	log := logger.FromContext(ctx)
-	for {
-		if err := s.subscribe(ctx); err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			log.Error("subscription error, reconnecting", "err", err, "delay", s.reconnectDelay)
-			select {
-			case <-time.After(s.reconnectDelay):
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-}
-
-func (s *Subscription) subscribe(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-
-	cursor, err := s.cursorStore.GetCursor(ctx, s.service)
-	if err != nil {
-		return fmt.Errorf("getting cursor: %w", err)
-	}
-
-	u, err := url.Parse(s.service)
-	if err != nil {
-		return fmt.Errorf("parsing service URL: %w", err)
-	}
-	u.Path = "xrpc/com.atproto.sync.subscribeRepos"
-
-	if cursor > 0 {
-		q := u.Query()
-		q.Set("cursor", fmt.Sprintf("%d", cursor))
-		u.RawQuery = q.Encode()
-	}
-
-	names := make([]string, len(s.pipelines))
-	for i, p := range s.pipelines {
-		names[i] = p.Name
-	}
-
-	log.Info("connecting to firehose", "url", u.String(), "pipelines", names)
-
-	firehoseConn, _, err := s.dialer.DialContext(ctx, u.String(), http.Header{
-		"User-Agent": []string{s.userAgent},
-	})
-	if err != nil {
-		return fmt.Errorf("dialing firehose: %w", err)
-	}
-	defer firehoseConn.Close()
-
-	rsc := &events.RepoStreamCallbacks{
-		RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
-			return s.HandleCommit(ctx, evt)
-		},
-	}
-
-	sched := parallel.NewScheduler(
-		s.concurrency,
-		s.queueSize,
-		s.service,
-		rsc.EventHandler,
-	)
-
-	s.connected.Store(true)
-	defer s.connected.Store(false)
-
-	log.Info("firehose connected, consuming events")
-	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
-}
-
-func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+// ProcessEvent parses CAR blocks, iterates ops, and runs pipeline matching.
+func (p *Processor) ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
 	log := logger.FromContext(ctx)
 
 	if evt == nil {
@@ -325,35 +233,29 @@ func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSub
 
 		switch op.Action {
 		case "delete":
-			s.handleDelete(ctx, uri)
+			p.handleDelete(ctx, uri)
 		case "create":
-			s.handleCreate(ctx, rr, evt.Repo, uri, op)
+			p.handleCreate(ctx, rr, evt.Repo, uri, op)
 		default:
 			log.Debug("skipping unsupported action", "action", op.Action, "path", op.Path)
 		}
 	}
 
-	if err := s.cursorStore.UpsertCursor(ctx, s.service, evt.Seq); err != nil {
-		return fmt.Errorf("upsert cursor: %w", err)
-	}
-
-	log.Debug("cursor updated", "seq", evt.Seq)
-
 	return nil
 }
 
-func (s *Subscription) handleDelete(ctx context.Context, uri string) {
+func (p *Processor) handleDelete(ctx context.Context, uri string) {
 	log := logger.FromContext(ctx)
 	log.Debug("deleting post", "uri", uri)
-	for i := range s.pipelines {
-		p := &s.pipelines[i]
-		if err := p.Store.DeletePosts(ctx, []string{uri}); err != nil {
-			log.Warn("failed to delete post", "pipeline", p.Name, "uri", uri, "err", err)
+	for i := range p.pipelines {
+		pipe := &p.pipelines[i]
+		if err := pipe.Store.DeletePosts(ctx, []string{uri}); err != nil {
+			log.Warn("failed to delete post", "pipeline", pipe.Name, "uri", uri, "err", err)
 		}
 	}
 }
 
-func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, uri string, op *comatproto.SyncSubscribeRepos_RepoOp) {
+func (p *Processor) handleCreate(ctx context.Context, rr *repo.Repo, actor, uri string, op *comatproto.SyncSubscribeRepos_RepoOp) {
 	log := logger.FromContext(ctx)
 
 	_, rec, err := rr.GetRecord(ctx, op.Path)
@@ -368,18 +270,61 @@ func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, u
 		return
 	}
 
-	for i := range s.pipelines {
-		p := &s.pipelines[i]
+	for i := range p.pipelines {
+		pipe := &p.pipelines[i]
 
-		if !p.shouldInsert(actor, post) {
+		if !pipe.shouldInsert(actor, post) {
 			continue
 		}
 
-		log.Info("inserting post", "pipeline", p.Name, "uri", uri)
-		if err := p.Store.InsertPost(ctx, p.Name, uri, op.Cid.String()); err != nil {
-			log.Warn("failed to insert post", "pipeline", p.Name, "uri", uri, "err", err)
+		log.Info("inserting post", "pipeline", pipe.Name, "uri", uri)
+		if err := pipe.Store.InsertPost(ctx, pipe.Name, uri, op.Cid.String()); err != nil {
+			log.Warn("failed to insert post", "pipeline", pipe.Name, "uri", uri, "err", err)
 		}
 	}
+}
+
+func (s *Subscription) Listen(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	for {
+		if err := s.subscribe(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Error("subscription error, reconnecting", "err", err, "delay", s.reconnectDelay)
+			select {
+			case <-time.After(s.reconnectDelay):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func (s *Subscription) subscribe(ctx context.Context) error {
+	cursor, err := s.cursorStore.GetCursor(ctx, s.firehose.Service())
+	if err != nil {
+		return fmt.Errorf("getting cursor: %w", err)
+	}
+	return s.firehose.Run(ctx, cursor, s.HandleCommit)
+}
+
+// HandleCommit processes an event and updates the firehose cursor.
+func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+	if err := s.ProcessEvent(ctx, evt); err != nil {
+		return err
+	}
+	if s.cursorStore == nil {
+		return nil
+	}
+	if err := s.cursorStore.UpsertCursor(ctx, s.firehose.Service(), evt.Seq); err != nil {
+		return fmt.Errorf("upsert cursor: %w", err)
+	}
+
+	log := logger.FromContext(ctx)
+	log.Debug("cursor updated", "seq", evt.Seq)
+
+	return nil
 }
 
 func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
@@ -408,11 +353,19 @@ func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
 }
 
 func buildURI(repo, path string) string {
-	url := url.URL{
+	u := url.URL{
 		Scheme: "at",
 		Host:   repo,
 		Path:   path,
 	}
 
-	return url.String()
+	return u.String()
+}
+
+func BuildUserAgent(name, url string) string {
+	ua := name + "/" + version.Version
+	if url != "" {
+		ua += " (+" + url + ")"
+	}
+	return ua
 }

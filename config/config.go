@@ -13,19 +13,41 @@ type Config struct {
 	Database     DatabaseConfig
 	Pipelines    []PipelineConfig
 	Subscription SubscriptionConfig
+	NATS         NATSConfig
+	Publisher    PublisherConfig
+	Worker       WorkerConfig
+}
+
+type NATSConfig struct {
+	URL           string        `mapstructure:"url"`
+	Subject       string        `mapstructure:"subject"`
+	QueueGroup    string        `mapstructure:"queue_group"`
+	ReconnectWait time.Duration `mapstructure:"reconnect_wait"`
+	NamePrefix    string        `mapstructure:"name_prefix"`
+}
+
+type PublisherConfig struct {
+	Enabled      bool          `mapstructure:"enabled"`
+	FlushTimeout time.Duration `mapstructure:"flush_timeout"`
+}
+
+type WorkerConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Count   int  `mapstructure:"count"`
 }
 
 type ServerConfig struct {
-	Port         int     `mapstructure:"port"`
-	LogLevel     string  `mapstructure:"log_level"`
-	Hostname     string  `mapstructure:"hostname"`
-	ServiceDID   string  `mapstructure:"service_did"`
-	PublisherDID string  `mapstructure:"publisher_did"`
-	DIDContext   string  `mapstructure:"did_context"`
-	ServiceID    string  `mapstructure:"service_id"`
-	UserAgent    string  `mapstructure:"user_agent"`
-	UserAgentURL string  `mapstructure:"user_agent_url"`
-	AdminToken   string  `mapstructure:"admin_token"`
+	Enabled      bool          `mapstructure:"enabled"`
+	Port         int           `mapstructure:"port"`
+	LogLevel     string        `mapstructure:"log_level"`
+	Hostname     string        `mapstructure:"hostname"`
+	ServiceDID   string        `mapstructure:"service_did"`
+	PublisherDID string        `mapstructure:"publisher_did"`
+	DIDContext   string        `mapstructure:"did_context"`
+	ServiceID    string        `mapstructure:"service_id"`
+	UserAgent    string        `mapstructure:"user_agent"`
+	UserAgentURL string        `mapstructure:"user_agent_url"`
+	AdminToken   string        `mapstructure:"admin_token"`
 	Rate         float64       `mapstructure:"rate"`
 	Limit        int           `mapstructure:"limit"`
 	RateMaxAge   time.Duration `mapstructure:"rate_max_age"`
@@ -53,7 +75,6 @@ type PipelineConfig struct {
 	RequireMedia    bool     `mapstructure:"require_media"`
 	BlockDIDs       []string `mapstructure:"block_dids"`
 	Enabled         bool     `mapstructure:"enabled"`
-	IgnoreBots      bool     `mapstructure:"ignore_bots"`
 	CollectionName  string   `mapstructure:"collection_name"`
 	Languages       []string `mapstructure:"languages"`
 	LinkLabel       string   `mapstructure:"link_label"`
@@ -61,6 +82,7 @@ type PipelineConfig struct {
 }
 
 type SubscriptionConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
 	Endpoint       string        `mapstructure:"endpoint"`
 	ReconnectDelay time.Duration `mapstructure:"reconnect_delay"`
 	Concurrency    int           `mapstructure:"concurrency"`

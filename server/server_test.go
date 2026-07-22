@@ -44,9 +44,17 @@ func (m *mockFirehose) Connected() bool {
 	return m.connected
 }
 
+type mockWorker struct {
+	connected bool
+}
+
+func (m *mockWorker) Connected() bool {
+	return m.connected
+}
+
 func newTestServer(ctrl *gomock.Controller) (*Server, *mocks.MockFeedService) {
 	svc := mocks.NewMockFeedService(ctrl)
-	srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), nil)
+	srv := New(8080, slog.Default(), svc, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}))
 	return srv, svc
 }
 
@@ -60,7 +68,7 @@ func TestNew(t *testing.T) {
 		db := &mockPingDB{}
 		fh := &mockFirehose{connected: true}
 
-		got := New(9090, log, svc, db, fh, "secret", NewRateLimiter(10.0, 20, 3*time.Minute), nil)
+		got := New(9090, log, svc, db, "secret", NewRateLimiter(10.0, 20, 3*time.Minute), WithFirehose(fh))
 		want := &Server{
 			port:       9090,
 			logger:     log,
@@ -93,6 +101,7 @@ func TestHandleHealth(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.True(t, body["database"])
 		assert.True(t, body["firehose"])
+		assert.False(t, body["worker"])
 	})
 
 	t.Run("database disconnected returns 503", func(t *testing.T) {
@@ -100,7 +109,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: true}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, "", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -113,6 +122,7 @@ func TestHandleHealth(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.False(t, body["database"])
 		assert.True(t, body["firehose"])
+		assert.False(t, body["worker"])
 	})
 
 	t.Run("firehose disconnected returns 503", func(t *testing.T) {
@@ -120,7 +130,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: false}))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -133,6 +143,7 @@ func TestHandleHealth(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.True(t, body["database"])
 		assert.False(t, body["firehose"])
+		assert.False(t, body["worker"])
 	})
 
 	t.Run("both disconnected returns 503", func(t *testing.T) {
@@ -140,7 +151,7 @@ func TestHandleHealth(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, &mockFirehose{connected: false}, "", NewRateLimiter(100, 200, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{err: fmt.Errorf("connection refused")}, "", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: false}))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
 		w := httptest.NewRecorder()
@@ -153,6 +164,52 @@ func TestHandleHealth(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		assert.False(t, body["database"])
 		assert.False(t, body["firehose"])
+		assert.False(t, body["worker"])
+	})
+
+	t.Run("worker connected returns ok when firehose disconnected", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "", NewRateLimiter(100, 200, 3*time.Minute),
+			WithFirehose(&mockFirehose{connected: false}),
+			WithWorker(&mockWorker{connected: true}),
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.True(t, body["database"])
+		assert.False(t, body["firehose"])
+		assert.True(t, body["worker"])
+	})
+
+	t.Run("no active role returns 503", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		svc := mocks.NewMockFeedService(ctrl)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "", NewRateLimiter(100, 200, 3*time.Minute))
+
+		req := httptest.NewRequest(http.MethodGet, "/xrpc/_health", nil)
+		w := httptest.NewRecorder()
+
+		srv.healthz()(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+		var body map[string]bool
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.True(t, body["database"])
+		assert.False(t, body["firehose"])
+		assert.False(t, body["worker"])
 	})
 }
 
@@ -492,7 +549,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "", NewRateLimiter(0.001, 1, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}))
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -516,7 +573,7 @@ func TestWithRateLimit(t *testing.T) {
 		defer ctrl.Finish()
 
 		svc := mocks.NewMockFeedService(ctrl)
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "", NewRateLimiter(0.001, 1, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "", NewRateLimiter(0.001, 1, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}))
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -657,7 +714,7 @@ func TestHandleGetFeedMetrics(t *testing.T) {
 			},
 		}, nil)
 
-		srv := New(8080, slog.Default(), nil, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+		srv := New(8080, slog.Default(), nil, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}), WithMetrics(ms))
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/metrics/my-feed", nil)
 		req = mux.SetURLVars(req, map[string]string{"feed": "my-feed"})
@@ -687,7 +744,7 @@ func TestHandleGetFeedMetrics(t *testing.T) {
 
 		q.EXPECT().GetFeedStats(gomock.Any(), "my-feed").Return(gen.FeedStat{}, sql.ErrNoRows)
 
-		srv := New(8080, slog.Default(), nil, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+		srv := New(8080, slog.Default(), nil, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}), WithMetrics(ms))
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/metrics/my-feed", nil)
 		req = mux.SetURLVars(req, map[string]string{"feed": "my-feed"})
@@ -722,7 +779,7 @@ func TestViewTracking(t *testing.T) {
 		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:plc:abc/app.bsky.feed.generator/my-feed", "", "").
 			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
 
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}), WithMetrics(ms))
 
 		go ms.Run(t.Context())
 		defer ms.Close()
@@ -749,7 +806,7 @@ func TestViewTracking(t *testing.T) {
 		svc.EXPECT().GetFeedPage(gomock.Any(), "at://did:plc:abc/app.bsky.feed.generator/my-feed", "", "").
 			Return(feed.FeedResponse{Feed: []feed.FeedItem{}}, nil)
 
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), nil)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton?feed=at://did:plc:abc/app.bsky.feed.generator/my-feed", nil)
 		w := httptest.NewRecorder()
@@ -769,7 +826,7 @@ func TestViewTracking(t *testing.T) {
 
 		q.EXPECT().RecordView(gomock.Any(), gomock.Any()).Times(0)
 
-		srv := New(8080, slog.Default(), svc, &mockPingDB{}, &mockFirehose{connected: true}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), ms)
+		srv := New(8080, slog.Default(), svc, &mockPingDB{}, "test-token", NewRateLimiter(100, 200, 3*time.Minute), WithFirehose(&mockFirehose{connected: true}), WithMetrics(ms))
 
 		req := httptest.NewRequest(http.MethodGet, "/xrpc/app.bsky.feed.getFeedSkeleton", nil)
 		w := httptest.NewRecorder()

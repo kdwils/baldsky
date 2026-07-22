@@ -114,7 +114,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18081, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18081)
 
@@ -162,7 +162,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18082, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18082)
 
@@ -201,7 +201,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18083, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18083)
 
@@ -252,7 +252,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18084, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18084)
 
@@ -323,7 +323,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18085, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18085)
 
@@ -387,7 +387,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18086, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18086)
 
@@ -452,7 +452,7 @@ func TestConformance(t *testing.T) {
 		go ms.Run(ctx)
 		defer ms.Close()
 
-		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, ms)
+		srv := server.New(18087, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh), server.WithMetrics(ms))
 		go srv.Run(ctx)
 		waitForServer(t, 18087)
 
@@ -517,7 +517,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
+		srv := server.New(18088, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh))
 		go srv.Run(ctx)
 		waitForServer(t, 18088)
 
@@ -529,7 +529,7 @@ func TestConformance(t *testing.T) {
 
 		var gotHealth map[string]bool
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&gotHealth))
-		wantHealth := map[string]bool{"database": true, "firehose": true}
+		wantHealth := map[string]bool{"database": true, "firehose": true, "worker": false}
 		assert.Equal(t, wantHealth, gotHealth)
 	})
 
@@ -548,7 +548,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
+		srv := server.New(18089, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh))
 		go srv.Run(ctx)
 		waitForServer(t, 18089)
 
@@ -590,7 +590,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
+		srv := server.New(18090, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh))
 		go srv.Run(ctx)
 		waitForServer(t, 18090)
 
@@ -639,7 +639,7 @@ func TestConformance(t *testing.T) {
 		}
 		feedSvc := feed.New(queries, serviceDID, hostname, publisherDID, "https://www.w3.org/ns/did/v1", "#bsky_fg", feedEntries)
 
-		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, fh, "test-admin-token", rl, nil)
+		srv := server.New(18091, slog.New(slog.NewTextHandler(io.Discard, nil)), feedSvc, sqldb, "test-admin-token", rl, server.WithFirehose(fh))
 		go srv.Run(ctx)
 		waitForServer(t, 18091)
 

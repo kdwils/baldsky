@@ -45,6 +45,7 @@ func initConfig() {
 		viper.SetConfigType("yaml")
 	}
 
+	viper.SetDefault("server.enabled", true)
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.log_level", "info")
 	viper.SetDefault("server.admin_token", "")
@@ -59,6 +60,7 @@ func initConfig() {
 	viper.SetDefault("feed.did_context", "https://www.w3.org/ns/did/v1")
 	viper.SetDefault("feed.service_id", "#bsky_fg")
 	viper.SetDefault("feed.collection_name", "app.bsky.feed.generator")
+	viper.SetDefault("subscription.enabled", true)
 	viper.SetDefault("subscription.endpoint", "wss://bsky.network")
 	viper.SetDefault("subscription.reconnect_delay", "5s")
 	viper.SetDefault("subscription.concurrency", 4)
@@ -66,6 +68,15 @@ func initConfig() {
 	viper.SetDefault("auth.pds", "https://bsky.social")
 	viper.SetDefault("auth.identifier", "")
 	viper.SetDefault("auth.password", "")
+	viper.SetDefault("nats.url", "")
+	viper.SetDefault("nats.subject", "firehose.events")
+	viper.SetDefault("nats.queue_group", "baldsky-workers")
+	viper.SetDefault("nats.reconnect_wait", "2s")
+	viper.SetDefault("nats.name_prefix", "baldsky")
+	viper.SetDefault("publisher.enabled", false)
+	viper.SetDefault("publisher.flush_timeout", "5s")
+	viper.SetDefault("worker.enabled", false)
+	viper.SetDefault("worker.count", 1)
 
 	viper.SetEnvPrefix("BALDSKY")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
