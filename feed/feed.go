@@ -80,8 +80,8 @@ type FeedEntry struct {
 	DisplayName    string
 	Description    string
 	CollectionName string
-	LinkLabel string
-	LinkURL   string
+	LinkLabel      string
+	LinkURL        string
 }
 
 type Service struct {

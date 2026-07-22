@@ -117,32 +117,14 @@ var serveCmd = &cobra.Command{
 		}
 
 		if cfg.Worker.Enabled {
-			pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
-
-			for _, p := range cfg.Pipelines {
-				if !p.Enabled {
-					continue
-				}
-				pipeline, err := subscription.NewPipeline(
-					p.ShortName,
-					p.Keywords,
-					p.ExcludeKeywords,
-					p.ContextKeywords,
-					p.ContextWords,
-					p.BlockDIDs,
-					p.Languages,
-					p.RequireMedia,
-					feedSvc,
-				)
-				if err != nil {
-					return err
-				}
-				pipelines = append(pipelines, pipeline)
+			pipelines, err := buildPipelines(cfg, feedSvc)
+			if err != nil {
+				return err
 			}
 
-			proc := subscription.New(pipelines, feedSvc, nil, "", 0, 0, 0, "")
+			proc := subscription.NewProcessor(pipelines)
 
-			w, err = worker.New(proc, cfg.NATS)
+			w, err = worker.New(proc, cfg.NATS, feedSvc)
 			if err != nil {
 				return err
 			}
@@ -150,27 +132,9 @@ var serveCmd = &cobra.Command{
 		}
 
 		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled {
-			pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
-
-			for _, p := range cfg.Pipelines {
-				if !p.Enabled {
-					continue
-				}
-				pipeline, err := subscription.NewPipeline(
-					p.ShortName,
-					p.Keywords,
-					p.ExcludeKeywords,
-					p.ContextKeywords,
-					p.ContextWords,
-					p.BlockDIDs,
-					p.Languages,
-					p.RequireMedia,
-					feedSvc,
-				)
-				if err != nil {
-					return err
-				}
-				pipelines = append(pipelines, pipeline)
+			pipelines, err := buildPipelines(cfg, feedSvc)
+			if err != nil {
+				return err
 			}
 
 			sub = subscription.New(
@@ -211,4 +175,29 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
+}
+
+func buildPipelines(cfg config.Config, feedSvc *feed.Service) ([]subscription.Pipeline, error) {
+	pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
+	for _, p := range cfg.Pipelines {
+		if !p.Enabled {
+			continue
+		}
+		pipeline, err := subscription.NewPipeline(
+			p.ShortName,
+			p.Keywords,
+			p.ExcludeKeywords,
+			p.ContextKeywords,
+			p.ContextWords,
+			p.BlockDIDs,
+			p.Languages,
+			p.RequireMedia,
+			feedSvc,
+		)
+		if err != nil {
+			return nil, err
+		}
+		pipelines = append(pipelines, pipeline)
+	}
+	return pipelines, nil
 }

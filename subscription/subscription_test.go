@@ -478,9 +478,11 @@ func TestHandleDelete(t *testing.T) {
 		)
 
 		s := &Subscription{
-			pipelines: []Pipeline{
-				{Name: "pipeline-1", Store: store1},
-				{Name: "pipeline-2", Store: store2},
+			Processor: &Processor{
+				pipelines: []Pipeline{
+					{Name: "pipeline-1", Store: store1},
+					{Name: "pipeline-2", Store: store2},
+				},
 			},
 		}
 
@@ -501,9 +503,11 @@ func TestHandleDelete(t *testing.T) {
 		)
 
 		s := &Subscription{
-			pipelines: []Pipeline{
-				{Name: "failing-pipeline", Store: store1},
-				{Name: "ok-pipeline", Store: store2},
+			Processor: &Processor{
+				pipelines: []Pipeline{
+					{Name: "failing-pipeline", Store: store1},
+					{Name: "ok-pipeline", Store: store2},
+				},
 			},
 		}
 
@@ -520,8 +524,10 @@ func TestHandleDelete(t *testing.T) {
 		store.EXPECT().DeletePosts(ctx, []string{"at://uri"}).Return(nil)
 
 		s := &Subscription{
-			pipelines: []Pipeline{
-				{Name: "only-pipeline", Store: store},
+			Processor: &Processor{
+				pipelines: []Pipeline{
+					{Name: "only-pipeline", Store: store},
+				},
 			},
 		}
 
@@ -557,10 +563,10 @@ func TestNewSubscription(t *testing.T) {
 
 		got := New(pipelines, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "baldsky/dev")
 		want := &Subscription{
-			pipelines:      pipelines,
-			cursorStore:    cursorStore,
+			Processor:      &Processor{pipelines: pipelines},
 			dialer:         dialer,
 			service:        "wss://bsky.network",
+			cursorStore:    cursorStore,
 			concurrency:    4,
 			queueSize:      100,
 			reconnectDelay: 5 * time.Second,
@@ -580,7 +586,7 @@ func TestNewSubscription(t *testing.T) {
 
 		got := New(pipelines, nil, nil, "", 0, 0, 0, "")
 		want := &Subscription{
-			pipelines: pipelines,
+			Processor: &Processor{pipelines: pipelines},
 		}
 		assert.Equal(t, want, got)
 	})
@@ -660,13 +666,13 @@ func mustCompileRegexps(keywords []string) []*regexp.Regexp {
 
 func TestHandleCreate(t *testing.T) {
 	t.Run("nil event is skipped", func(t *testing.T) {
-		s := &Subscription{}
+		s := &Subscription{Processor: &Processor{}}
 		err := s.HandleCommit(t.Context(), nil)
 		require.NoError(t, err)
 	})
 
 	t.Run("too big event is skipped", func(t *testing.T) {
-		s := &Subscription{}
+		s := &Subscription{Processor: &Processor{}}
 		evt := &comatproto.SyncSubscribeRepos_Commit{
 			Repo:   "did:plc:actor1",
 			Seq:    1,

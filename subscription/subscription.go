@@ -23,8 +23,13 @@ import (
 	"github.com/kdwils/baldsky/version"
 )
 
-func BuildUserAgent(name, url string) string {
-	return name + "/" + version.Version + " (+" + url + ")"
+// Processor parses CAR blocks, runs pipeline matching, and inserts/deletes posts.
+type Processor struct {
+	pipelines []Pipeline
+}
+
+func NewProcessor(pipelines []Pipeline) *Processor {
+	return &Processor{pipelines: pipelines}
 }
 
 //go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
@@ -195,7 +200,7 @@ func (p *Pipeline) MatchesPost(text string, langs []string, hasEmbed bool) bool 
 }
 
 type Subscription struct {
-	pipelines      []Pipeline
+	*Processor
 	dialer         Dialer
 	service        string
 	cursorStore    CursorStore
@@ -212,7 +217,7 @@ func (s *Subscription) Connected() bool {
 
 func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, concurrency, queueSize int, reconnectDelay time.Duration, userAgent string) *Subscription {
 	return &Subscription{
-		pipelines:      pipelines,
+		Processor:      NewProcessor(pipelines),
 		dialer:         dialer,
 		service:        service,
 		cursorStore:    cursorStore,
@@ -220,6 +225,89 @@ func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service s
 		queueSize:      queueSize,
 		reconnectDelay: reconnectDelay,
 		userAgent:      userAgent,
+	}
+}
+
+// ProcessEvent parses CAR blocks, iterates ops, and runs pipeline matching.
+func (p *Processor) ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+	log := logger.FromContext(ctx)
+
+	if evt == nil {
+		log.Warn("received nil event")
+		return nil
+	}
+
+	log.Debug("received event", "repo", evt.Repo, "seq", evt.Seq, "time", evt.Time)
+
+	if evt.TooBig {
+		log.Debug("skipping oversized event", "repo", evt.Repo, "seq", evt.Seq)
+		return nil
+	}
+
+	rr, err := repo.ReadRepoFromCar(ctx, bytes.NewReader(evt.Blocks))
+	if err != nil {
+		log.Warn("failed to read repo from car", "repo", evt.Repo, "seq", evt.Seq, "err", err)
+		return nil
+	}
+
+	for _, op := range evt.Ops {
+		if !strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
+			log.Debug("skipping non-post operation", "path", op.Path, "action", op.Action)
+			continue
+		}
+
+		uri := buildURI(evt.Repo, op.Path)
+
+		switch op.Action {
+		case "delete":
+			p.handleDelete(ctx, uri)
+		case "create":
+			p.handleCreate(ctx, rr, evt.Repo, uri, op)
+		default:
+			log.Debug("skipping unsupported action", "action", op.Action, "path", op.Path)
+		}
+	}
+
+	return nil
+}
+
+func (p *Processor) handleDelete(ctx context.Context, uri string) {
+	log := logger.FromContext(ctx)
+	log.Debug("deleting post", "uri", uri)
+	for i := range p.pipelines {
+		pipe := &p.pipelines[i]
+		if err := pipe.Store.DeletePosts(ctx, []string{uri}); err != nil {
+			log.Warn("failed to delete post", "pipeline", pipe.Name, "uri", uri, "err", err)
+		}
+	}
+}
+
+func (p *Processor) handleCreate(ctx context.Context, rr *repo.Repo, actor, uri string, op *comatproto.SyncSubscribeRepos_RepoOp) {
+	log := logger.FromContext(ctx)
+
+	_, rec, err := rr.GetRecord(ctx, op.Path)
+	if err != nil {
+		log.Warn("failed to get record", "path", op.Path, "err", err)
+		return
+	}
+
+	post, ok := rec.(*bsky.FeedPost)
+	if !ok {
+		log.Debug("record is not a feed post", "path", op.Path)
+		return
+	}
+
+	for i := range p.pipelines {
+		pipe := &p.pipelines[i]
+
+		if !pipe.shouldInsert(actor, post) {
+			continue
+		}
+
+		log.Info("inserting post", "pipeline", pipe.Name, "uri", uri)
+		if err := pipe.Store.InsertPost(ctx, pipe.Name, uri, op.Cid.String()); err != nil {
+			log.Warn("failed to insert post", "pipeline", pipe.Name, "uri", uri, "err", err)
+		}
 	}
 }
 
@@ -249,6 +337,9 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	}
 
 	firehoseURL, err := atproto.FirehoseURL(s.service, cursor)
+	if err != nil {
+		return fmt.Errorf("building firehose URL: %w", err)
+	}
 
 	names := make([]string, len(s.pipelines))
 	for i, p := range s.pipelines {
@@ -285,50 +376,7 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
 }
 
-// ProcessEvent parses CAR blocks, iterates ops, and runs pipeline matching.
-func (s *Subscription) ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
-	log := logger.FromContext(ctx)
-
-	if evt == nil {
-		log.Warn("received nil event")
-		return nil
-	}
-
-	log.Debug("received event", "repo", evt.Repo, "seq", evt.Seq, "time", evt.Time)
-
-	if evt.TooBig {
-		log.Debug("skipping oversized event", "repo", evt.Repo, "seq", evt.Seq)
-		return nil
-	}
-
-	rr, err := repo.ReadRepoFromCar(ctx, bytes.NewReader(evt.Blocks))
-	if err != nil {
-		log.Warn("failed to read repo from car", "repo", evt.Repo, "seq", evt.Seq, "err", err)
-		return nil
-	}
-
-	for _, op := range evt.Ops {
-		if !strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
-			log.Debug("skipping non-post operation", "path", op.Path, "action", op.Action)
-			continue
-		}
-
-		uri := buildURI(evt.Repo, op.Path)
-
-		switch op.Action {
-		case "delete":
-			s.handleDelete(ctx, uri)
-		case "create":
-			s.handleCreate(ctx, rr, evt.Repo, uri, op)
-		default:
-			log.Debug("skipping unsupported action", "action", op.Action, "path", op.Path)
-		}
-	}
-
-	return nil
-}
-
-// HandleCommit processes an event and updates the firehose cursor
+// HandleCommit processes an event and updates the firehose cursor.
 func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
 	if err := s.ProcessEvent(ctx, evt); err != nil {
 		return err
@@ -344,46 +392,6 @@ func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSub
 	log.Debug("cursor updated", "seq", evt.Seq)
 
 	return nil
-}
-
-func (s *Subscription) handleDelete(ctx context.Context, uri string) {
-	log := logger.FromContext(ctx)
-	log.Debug("deleting post", "uri", uri)
-	for i := range s.pipelines {
-		p := &s.pipelines[i]
-		if err := p.Store.DeletePosts(ctx, []string{uri}); err != nil {
-			log.Warn("failed to delete post", "pipeline", p.Name, "uri", uri, "err", err)
-		}
-	}
-}
-
-func (s *Subscription) handleCreate(ctx context.Context, rr *repo.Repo, actor, uri string, op *comatproto.SyncSubscribeRepos_RepoOp) {
-	log := logger.FromContext(ctx)
-
-	_, rec, err := rr.GetRecord(ctx, op.Path)
-	if err != nil {
-		log.Warn("failed to get record", "path", op.Path, "err", err)
-		return
-	}
-
-	post, ok := rec.(*bsky.FeedPost)
-	if !ok {
-		log.Debug("record is not a feed post", "path", op.Path)
-		return
-	}
-
-	for i := range s.pipelines {
-		p := &s.pipelines[i]
-
-		if !p.shouldInsert(actor, post) {
-			continue
-		}
-
-		log.Info("inserting post", "pipeline", p.Name, "uri", uri)
-		if err := p.Store.InsertPost(ctx, p.Name, uri, op.Cid.String()); err != nil {
-			log.Warn("failed to insert post", "pipeline", p.Name, "uri", uri, "err", err)
-		}
-	}
 }
 
 func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
@@ -419,4 +427,12 @@ func buildURI(repo, path string) string {
 	}
 
 	return url.String()
+}
+
+func BuildUserAgent(name, url string) string {
+	ua := name + "/" + version.Version
+	if url != "" {
+		ua += " (+" + url + ")"
+	}
+	return ua
 }

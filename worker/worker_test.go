@@ -51,6 +51,23 @@ func TestProcessEventCalled(t *testing.T) {
 	})
 }
 
+func TestCursorStoreInterface(t *testing.T) {
+	t.Run("mock cursor store records updates", func(t *testing.T) {
+		store := &mockCursorStore{}
+		err := store.UpsertCursor(context.Background(), "firehose.events", 42)
+		require.NoError(t, err)
+		assert.Equal(t, "firehose.events", store.lastService)
+		assert.Equal(t, int64(42), store.lastCursor)
+	})
+
+	t.Run("cursor store error is propagated", func(t *testing.T) {
+		store := &mockCursorStore{err: errors.New("db error")}
+		err := store.UpsertCursor(context.Background(), "firehose.events", 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db error")
+	})
+}
+
 type mockProcessor struct {
 	callCount int
 	lastEvt   *comatproto.SyncSubscribeRepos_Commit
@@ -61,4 +78,19 @@ func (m *mockProcessor) ProcessEvent(ctx context.Context, evt *comatproto.SyncSu
 	m.callCount++
 	m.lastEvt = evt
 	return m.err
+}
+
+type mockCursorStore struct {
+	lastService string
+	lastCursor  int64
+	err         error
+}
+
+func (m *mockCursorStore) UpsertCursor(ctx context.Context, service string, cursor int64) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.lastService = service
+	m.lastCursor = cursor
+	return nil
 }

@@ -33,17 +33,17 @@ type WorkerConfig struct {
 }
 
 type ServerConfig struct {
-	Enabled      bool    `mapstructure:"enabled"`
-	Port         int     `mapstructure:"port"`
-	LogLevel     string  `mapstructure:"log_level"`
-	Hostname     string  `mapstructure:"hostname"`
-	ServiceDID   string  `mapstructure:"service_did"`
-	PublisherDID string  `mapstructure:"publisher_did"`
-	DIDContext   string  `mapstructure:"did_context"`
-	ServiceID    string  `mapstructure:"service_id"`
-	UserAgent    string  `mapstructure:"user_agent"`
-	UserAgentURL string  `mapstructure:"user_agent_url"`
-	AdminToken   string  `mapstructure:"admin_token"`
+	Enabled      bool          `mapstructure:"enabled"`
+	Port         int           `mapstructure:"port"`
+	LogLevel     string        `mapstructure:"log_level"`
+	Hostname     string        `mapstructure:"hostname"`
+	ServiceDID   string        `mapstructure:"service_did"`
+	PublisherDID string        `mapstructure:"publisher_did"`
+	DIDContext   string        `mapstructure:"did_context"`
+	ServiceID    string        `mapstructure:"service_id"`
+	UserAgent    string        `mapstructure:"user_agent"`
+	UserAgentURL string        `mapstructure:"user_agent_url"`
+	AdminToken   string        `mapstructure:"admin_token"`
 	Rate         float64       `mapstructure:"rate"`
 	Limit        int           `mapstructure:"limit"`
 	RateMaxAge   time.Duration `mapstructure:"rate_max_age"`

@@ -64,6 +64,7 @@ func (p *Publisher) Connected() bool {
 
 func (p *Publisher) Listen(ctx context.Context) {
 	log := logger.FromContext(ctx)
+	defer p.nc.Close()
 	for {
 		if err := p.subscribe(ctx); err != nil {
 			if ctx.Err() != nil {
@@ -88,6 +89,9 @@ func (p *Publisher) subscribe(ctx context.Context) error {
 	}
 
 	firehoseURL, err := atproto.FirehoseURL(p.service, cursor)
+	if err != nil {
+		return fmt.Errorf("building firehose URL: %w", err)
+	}
 
 	log.Info("publisher connecting to firehose", "url", firehoseURL)
 

@@ -19,24 +19,33 @@ type Processor interface {
 	ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error
 }
 
-type Worker struct {
-	processor  Processor
-	nc         *nats.Conn
-	subject    string
-	queueGroup string
-	connected  atomic.Bool
+// CursorStore persists the last processed cursor position.
+type CursorStore interface {
+	UpsertCursor(ctx context.Context, service string, cursor int64) error
 }
 
-func New(processor Processor, natsCfg config.NATSConfig) (*Worker, error) {
+type Worker struct {
+	processor   Processor
+	cursorStore CursorStore
+	nc          *nats.Conn
+	subject     string
+	queueGroup  string
+	service     string
+	connected   atomic.Bool
+}
+
+func New(processor Processor, natsCfg config.NATSConfig, cursorStore CursorStore) (*Worker, error) {
 	nc, err := nats.Connect(natsCfg.URL, nats.Name("baldsky-worker"))
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)
 	}
 	return &Worker{
-		processor:  processor,
-		nc:         nc,
-		subject:    natsCfg.Subject,
-		queueGroup: natsCfg.QueueGroup,
+		processor:   processor,
+		cursorStore: cursorStore,
+		nc:          nc,
+		subject:     natsCfg.Subject,
+		queueGroup:  natsCfg.QueueGroup,
+		service:     natsCfg.Subject,
 	}, nil
 }
 
@@ -46,6 +55,7 @@ func (w *Worker) Connected() bool {
 
 func (w *Worker) Run(ctx context.Context) {
 	log := logger.FromContext(ctx)
+	defer w.nc.Close()
 
 	sub, err := w.nc.QueueSubscribe(w.subject, w.queueGroup, func(msg *nats.Msg) {
 		var evt comatproto.SyncSubscribeRepos_Commit
@@ -55,6 +65,12 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 		if err := w.processor.ProcessEvent(ctx, &evt); err != nil {
 			log.Error("failed to process event", "err", err)
+			return
+		}
+		if w.cursorStore != nil {
+			if err := w.cursorStore.UpsertCursor(ctx, w.service, evt.Seq); err != nil {
+				log.Warn("failed to update cursor", "seq", evt.Seq, "err", err)
+			}
 		}
 	})
 	if err != nil {
