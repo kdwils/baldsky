@@ -13,6 +13,23 @@ type Config struct {
 	Database     DatabaseConfig
 	Pipelines    []PipelineConfig
 	Subscription SubscriptionConfig
+	NATS         NATSConfig
+	Publisher    PublisherConfig
+	Worker       WorkerConfig
+}
+
+type NATSConfig struct {
+	URL        string `mapstructure:"url"`
+	Subject    string `mapstructure:"subject"`
+	QueueGroup string `mapstructure:"queue_group"`
+}
+
+type PublisherConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
+
+type WorkerConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 type ServerConfig struct {

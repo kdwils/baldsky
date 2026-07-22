@@ -17,8 +17,10 @@ import (
 	"github.com/kdwils/baldsky/db/gen"
 	"github.com/kdwils/baldsky/feed"
 	"github.com/kdwils/baldsky/logger"
+	"github.com/kdwils/baldsky/publisher"
 	"github.com/kdwils/baldsky/server"
 	"github.com/kdwils/baldsky/subscription"
+	"github.com/kdwils/baldsky/worker"
 )
 
 var serveCmd = &cobra.Command{
@@ -30,8 +32,8 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
-		if !cfg.Server.Enabled && !cfg.Subscription.Enabled {
-			return fmt.Errorf("both server and subscription are disabled; nothing to do")
+		if !cfg.Server.Enabled && !cfg.Subscription.Enabled && !cfg.Publisher.Enabled && !cfg.Worker.Enabled {
+			return fmt.Errorf("no roles enabled; nothing to do")
 		}
 
 		log := logger.New(cfg.Server.LogLevel)
@@ -93,7 +95,28 @@ var serveCmd = &cobra.Command{
 		go metricsSvc.Run(ctx)
 		defer metricsSvc.Close()
 
-		if cfg.Subscription.Enabled {
+		var sub *subscription.Subscription
+		var pub *publisher.Publisher
+		var w *worker.Worker
+
+		if cfg.Publisher.Enabled {
+			pub, err = publisher.New(
+				feedSvc,
+				websocket.DefaultDialer,
+				cfg.Subscription.Endpoint,
+				cfg.NATS,
+				cfg.Subscription.Concurrency,
+				cfg.Subscription.QueueSize,
+				cfg.Subscription.ReconnectDelay,
+				subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
+			)
+			if err != nil {
+				return err
+			}
+			go pub.Listen(ctx)
+		}
+
+		if cfg.Worker.Enabled {
 			pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
 
 			for _, p := range cfg.Pipelines {
@@ -117,7 +140,40 @@ var serveCmd = &cobra.Command{
 				pipelines = append(pipelines, pipeline)
 			}
 
-			sub := subscription.New(
+			proc := subscription.New(pipelines, feedSvc, nil, "", 0, 0, 0, "")
+
+			w, err = worker.New(proc, cfg.NATS)
+			if err != nil {
+				return err
+			}
+			go w.Run(ctx)
+		}
+
+		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled {
+			pipelines := make([]subscription.Pipeline, 0, len(cfg.Pipelines))
+
+			for _, p := range cfg.Pipelines {
+				if !p.Enabled {
+					continue
+				}
+				pipeline, err := subscription.NewPipeline(
+					p.ShortName,
+					p.Keywords,
+					p.ExcludeKeywords,
+					p.ContextKeywords,
+					p.ContextWords,
+					p.BlockDIDs,
+					p.Languages,
+					p.RequireMedia,
+					feedSvc,
+				)
+				if err != nil {
+					return err
+				}
+				pipelines = append(pipelines, pipeline)
+			}
+
+			sub = subscription.New(
 				pipelines,
 				feedSvc,
 				websocket.DefaultDialer,
@@ -129,17 +185,26 @@ var serveCmd = &cobra.Command{
 			)
 
 			go sub.Listen(ctx)
-
-			if !cfg.Server.Enabled {
-				<-ctx.Done()
-				return nil
-			}
-
-			srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, sub, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
-			return srv.Run(ctx)
 		}
 
-		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, nil, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), metricsSvc)
+		if !cfg.Server.Enabled {
+			<-ctx.Done()
+			return nil
+		}
+
+		var serverOpts []server.Option
+		if sub != nil {
+			serverOpts = append(serverOpts, server.WithFirehose(sub))
+		}
+		if pub != nil {
+			serverOpts = append(serverOpts, server.WithFirehose(pub))
+		}
+		if w != nil {
+			serverOpts = append(serverOpts, server.WithWorker(w))
+		}
+		serverOpts = append(serverOpts, server.WithMetrics(metricsSvc))
+
+		srv := server.New(cfg.Server.Port, log, feedSvc, postgres.DB, cfg.Server.AdminToken, server.NewRateLimiter(cfg.Server.Rate, cfg.Server.Limit, cfg.Server.RateMaxAge), serverOpts...)
 		return srv.Run(ctx)
 	},
 }

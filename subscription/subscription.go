@@ -18,6 +18,7 @@ import (
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/gorilla/websocket"
 
+	"github.com/kdwils/baldsky/atproto"
 	"github.com/kdwils/baldsky/logger"
 	"github.com/kdwils/baldsky/version"
 )
@@ -247,26 +248,16 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 		return fmt.Errorf("getting cursor: %w", err)
 	}
 
-	u, err := url.Parse(s.service)
-	if err != nil {
-		return fmt.Errorf("parsing service URL: %w", err)
-	}
-	u.Path = "xrpc/com.atproto.sync.subscribeRepos"
-
-	if cursor > 0 {
-		q := u.Query()
-		q.Set("cursor", fmt.Sprintf("%d", cursor))
-		u.RawQuery = q.Encode()
-	}
+	firehoseURL, err := atproto.FirehoseURL(s.service, cursor)
 
 	names := make([]string, len(s.pipelines))
 	for i, p := range s.pipelines {
 		names[i] = p.Name
 	}
 
-	log.Info("connecting to firehose", "url", u.String(), "pipelines", names)
+	log.Info("connecting to firehose", "url", firehoseURL, "pipelines", names)
 
-	firehoseConn, _, err := s.dialer.DialContext(ctx, u.String(), http.Header{
+	firehoseConn, _, err := s.dialer.DialContext(ctx, firehoseURL, http.Header{
 		"User-Agent": []string{s.userAgent},
 	})
 	if err != nil {
@@ -294,7 +285,8 @@ func (s *Subscription) subscribe(ctx context.Context) error {
 	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
 }
 
-func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+// ProcessEvent parses CAR blocks, iterates ops, and runs pipeline matching.
+func (s *Subscription) ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
 	log := logger.FromContext(ctx)
 
 	if evt == nil {
@@ -333,10 +325,22 @@ func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSub
 		}
 	}
 
+	return nil
+}
+
+// HandleCommit processes an event and updates the firehose cursor
+func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
+	if err := s.ProcessEvent(ctx, evt); err != nil {
+		return err
+	}
+	if evt == nil || s.cursorStore == nil {
+		return nil
+	}
 	if err := s.cursorStore.UpsertCursor(ctx, s.service, evt.Seq); err != nil {
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 
+	log := logger.FromContext(ctx)
 	log.Debug("cursor updated", "seq", evt.Seq)
 
 	return nil

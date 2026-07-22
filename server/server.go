@@ -18,6 +18,7 @@ import (
 )
 
 //go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_feed_service.go -package=mocks github.com/kdwils/baldsky/server FeedService
+//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_worker_checker.go -package=mocks github.com/kdwils/baldsky/server WorkerChecker
 
 type FeedService interface {
 	GetDIDDocument() feed.DIDDocument
@@ -31,6 +32,10 @@ type FirehoseChecker interface {
 	Connected() bool
 }
 
+type WorkerChecker interface {
+	Connected() bool
+}
+
 type PingDB interface {
 	PingContext(ctx context.Context) error
 }
@@ -41,22 +46,39 @@ type Server struct {
 	svc        FeedService
 	db         PingDB
 	firehose   FirehoseChecker
+	worker     WorkerChecker
 	adminToken string
 	rl         *RateLimiter
 	metrics    *feed.MetricsService
 }
 
-func New(port int, logger *slog.Logger, svc FeedService, db PingDB, firehose FirehoseChecker, adminToken string, rl *RateLimiter, metrics *feed.MetricsService) *Server {
-	return &Server{
+type Option func(*Server)
+
+func WithFirehose(fh FirehoseChecker) Option {
+	return func(s *Server) { s.firehose = fh }
+}
+
+func WithWorker(w WorkerChecker) Option {
+	return func(s *Server) { s.worker = w }
+}
+
+func WithMetrics(m *feed.MetricsService) Option {
+	return func(s *Server) { s.metrics = m }
+}
+
+func New(port int, logger *slog.Logger, svc FeedService, db PingDB, adminToken string, rl *RateLimiter, opts ...Option) *Server {
+	s := &Server{
 		port:       port,
 		logger:     logger,
 		svc:        svc,
 		db:         db,
-		firehose:   firehose,
 		adminToken: adminToken,
 		rl:         rl,
-		metrics:    metrics,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -152,15 +174,17 @@ func (s *Server) healthz() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dbOK := s.db.PingContext(r.Context()) == nil
 		fhOK := s.firehose != nil && s.firehose.Connected()
+		wOK := s.worker != nil && s.worker.Connected()
 
 		status := http.StatusOK
-		if !dbOK || !fhOK {
+		if !dbOK || (!fhOK && !wOK) {
 			status = http.StatusServiceUnavailable
 		}
 
 		writeJSON(w, status, map[string]bool{
 			"database": dbOK,
 			"firehose": fhOK,
+			"worker":   wOK,
 		})
 	}
 }
