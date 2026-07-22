@@ -119,6 +119,6 @@ func (p *Publisher) handleCommit(ctx context.Context, evt *comatproto.SyncSubscr
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 
-	log.Info("event published", "seq", evt.Seq, "repo", evt.Repo)
+	log.Debug("event published", "seq", evt.Seq, "repo", evt.Repo)
 	return nil
 }

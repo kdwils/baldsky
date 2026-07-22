@@ -74,7 +74,7 @@ func (w *Worker) Run(ctx context.Context) {
 			}
 		}
 
-		log.Info("processed event")
+		log.Debug("processed event")
 	})
 	if err != nil {
 		log.Error("failed to subscribe to NATS", "err", err)
