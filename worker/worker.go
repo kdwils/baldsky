@@ -5,28 +5,19 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/nats-io/nats.go"
 
 	"github.com/kdwils/baldsky/config"
 	"github.com/kdwils/baldsky/logger"
+	fh "github.com/kdwils/baldsky/firehose"
 )
 
-// Processor abstracts event processing so consumers don't need
-// to depend on the full Subscription type.
-type Processor interface {
-	ProcessEvent(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error
-}
-
-// CursorStore persists the last processed cursor position.
-type CursorStore interface {
-	UpsertCursor(ctx context.Context, service string, cursor int64) error
-}
-
 type Worker struct {
-	processor   Processor
-	cursorStore CursorStore
+	processor   fh.Processor
+	cursorStore fh.CursorStore
 	nc          *nats.Conn
 	subject     string
 	queueGroup  string
@@ -34,8 +25,12 @@ type Worker struct {
 	connected   atomic.Bool
 }
 
-func New(processor Processor, natsCfg config.NATSConfig, cursorStore CursorStore) (*Worker, error) {
-	nc, err := nats.Connect(natsCfg.URL, nats.Name("baldsky-worker"))
+func New(processor fh.Processor, service string, natsCfg config.NATSConfig, cursorStore fh.CursorStore) (*Worker, error) {
+	nc, err := nats.Connect(natsCfg.URL,
+		nats.Name("baldsky-worker"),
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2*time.Second),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)
 	}
@@ -45,7 +40,7 @@ func New(processor Processor, natsCfg config.NATSConfig, cursorStore CursorStore
 		nc:          nc,
 		subject:     natsCfg.Subject,
 		queueGroup:  natsCfg.QueueGroup,
-		service:     natsCfg.Subject,
+		service:     service,
 	}, nil
 }
 

@@ -4,62 +4,45 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"sync/atomic"
 	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/nats-io/nats.go"
 
-	"github.com/kdwils/baldsky/atproto"
 	"github.com/kdwils/baldsky/config"
 	"github.com/kdwils/baldsky/logger"
-	"github.com/kdwils/baldsky/subscription"
+	fh "github.com/kdwils/baldsky/firehose"
 )
 
 type Publisher struct {
-	dialer         subscription.Dialer
-	cursorStore    subscription.CursorStore
+	cursorStore    fh.CursorStore
+	firehose       *fh.FirehoseConn
 	nc             *nats.Conn
 	subject        string
-	service        string
-	concurrency    int
-	queueSize      int
 	reconnectDelay time.Duration
-	userAgent      string
-	connected      atomic.Bool
 }
 
 func New(
-	cursorStore subscription.CursorStore,
-	dialer subscription.Dialer,
-	service string,
+	cursorStore fh.CursorStore,
+	firehose *fh.FirehoseConn,
 	natsCfg config.NATSConfig,
-	concurrency, queueSize int,
 	reconnectDelay time.Duration,
-	userAgent string,
 ) (*Publisher, error) {
 	nc, err := nats.Connect(natsCfg.URL, nats.Name("baldsky-publisher"))
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)
 	}
 	return &Publisher{
-		dialer:         dialer,
 		cursorStore:    cursorStore,
+		firehose:       firehose,
 		nc:             nc,
 		subject:        natsCfg.Subject,
-		service:        service,
-		concurrency:    concurrency,
-		queueSize:      queueSize,
 		reconnectDelay: reconnectDelay,
-		userAgent:      userAgent,
 	}, nil
 }
 
 func (p *Publisher) Connected() bool {
-	return p.connected.Load()
+	return p.firehose.Connected()
 }
 
 func (p *Publisher) Listen(ctx context.Context) {
@@ -81,46 +64,11 @@ func (p *Publisher) Listen(ctx context.Context) {
 }
 
 func (p *Publisher) subscribe(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-
-	cursor, err := p.cursorStore.GetCursor(ctx, p.service)
+	cursor, err := p.cursorStore.GetCursor(ctx, p.firehose.Service())
 	if err != nil {
 		return fmt.Errorf("getting cursor: %w", err)
 	}
-
-	firehoseURL, err := atproto.FirehoseURL(p.service, cursor)
-	if err != nil {
-		return fmt.Errorf("building firehose URL: %w", err)
-	}
-
-	log.Info("publisher connecting to firehose", "url", firehoseURL)
-
-	firehoseConn, _, err := p.dialer.DialContext(ctx, firehoseURL, http.Header{
-		"User-Agent": []string{p.userAgent},
-	})
-	if err != nil {
-		return fmt.Errorf("dialing firehose: %w", err)
-	}
-	defer firehoseConn.Close()
-
-	rsc := &events.RepoStreamCallbacks{
-		RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
-			return p.handleCommit(ctx, evt)
-		},
-	}
-
-	sched := parallel.NewScheduler(
-		p.concurrency,
-		p.queueSize,
-		p.service,
-		rsc.EventHandler,
-	)
-
-	p.connected.Store(true)
-	defer p.connected.Store(false)
-
-	log.Info("publisher connected, forwarding events to NATS")
-	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
+	return p.firehose.Run(ctx, cursor, p.handleCommit)
 }
 
 func (p *Publisher) handleCommit(ctx context.Context, evt *comatproto.SyncSubscribeRepos_Commit) error {
@@ -139,7 +87,7 @@ func (p *Publisher) handleCommit(ctx context.Context, evt *comatproto.SyncSubscr
 		return fmt.Errorf("publish: %w", err)
 	}
 
-	if err := p.cursorStore.UpsertCursor(ctx, p.service, evt.Seq); err != nil {
+	if err := p.cursorStore.UpsertCursor(ctx, p.firehose.Service(), evt.Seq); err != nil {
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 

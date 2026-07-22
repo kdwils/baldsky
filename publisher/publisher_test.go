@@ -9,11 +9,11 @@ import (
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/ipfs/go-cid"
 	"github.com/kdwils/baldsky/config"
+	fh "github.com/kdwils/baldsky/firehose"
+	"github.com/kdwils/baldsky/firehose/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/kdwils/baldsky/subscription/mocks"
 )
 
 func TestNew(t *testing.T) {
@@ -22,13 +22,13 @@ func TestNew(t *testing.T) {
 		defer ctrl.Finish()
 
 		cursorStore := mocks.NewMockCursorStore(ctrl)
-		dialer := mocks.NewMockDialer(ctrl)
+		firehoseConn := fh.NewFirehoseConn(nil, "wss://bsky.network", "test/1.0", 4, 100)
 
-		_, err := New(cursorStore, dialer, "wss://bsky.network", config.NATSConfig{
+		_, err := New(cursorStore, firehoseConn, config.NATSConfig{
 			URL:        "nats://invalid-host:9999",
 			Subject:    "firehose.events",
 			QueueGroup: "baldsky-workers",
-		}, 4, 100, 5*time.Second, "baldsky/dev")
+		}, 5*time.Second)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to NATS")

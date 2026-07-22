@@ -10,6 +10,8 @@ import (
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
+	fh "github.com/kdwils/baldsky/firehose"
+	firehosemocks "github.com/kdwils/baldsky/firehose/mocks"
 	"github.com/kdwils/baldsky/subscription/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -558,19 +560,15 @@ func TestNewSubscription(t *testing.T) {
 		pipelines := []Pipeline{
 			{Name: "p1", Store: store},
 		}
-		cursorStore := mocks.NewMockCursorStore(ctrl)
-		dialer := mocks.NewMockDialer(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
+		firehose := fh.NewFirehoseConn(nil, "wss://bsky.network", "baldsky/dev", 4, 100)
 
-		got := New(pipelines, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "baldsky/dev")
+		got := New(pipelines, cursorStore, firehose, 5*time.Second)
 		want := &Subscription{
 			Processor:      &Processor{pipelines: pipelines},
-			dialer:         dialer,
-			service:        "wss://bsky.network",
+			firehose:       firehose,
 			cursorStore:    cursorStore,
-			concurrency:    4,
-			queueSize:      100,
 			reconnectDelay: 5 * time.Second,
-			userAgent:      "baldsky/dev",
 		}
 		assert.Equal(t, want, got)
 	})
@@ -584,7 +582,7 @@ func TestNewSubscription(t *testing.T) {
 			{Name: "p1", Store: store},
 		}
 
-		got := New(pipelines, nil, nil, "", 0, 0, 0, "")
+		got := New(pipelines, nil, nil, 0)
 		want := &Subscription{
 			Processor: &Processor{pipelines: pipelines},
 		}
@@ -597,9 +595,10 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		cursorStore := mocks.NewMockCursorStore(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
 		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), errors.New("cursor read failed"))
-		s := New(nil, cursorStore, nil, "wss://bsky.network", 4, 100, 5*time.Second, "test")
+		firehose := fh.NewFirehoseConn(nil, "wss://bsky.network", "test", 4, 100)
+		s := New(nil, cursorStore, firehose, 5*time.Second)
 		ctx := t.Context()
 
 		err := s.subscribe(ctx)
@@ -612,11 +611,12 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		cursorStore := mocks.NewMockCursorStore(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
 		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), nil)
-		dialer := mocks.NewMockDialer(ctrl)
+		dialer := firehosemocks.NewMockDialer(ctrl)
 		dialer.EXPECT().DialContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil, errors.New("connection refused"))
-		s := New(nil, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "test")
+		firehose := fh.NewFirehoseConn(dialer, "wss://bsky.network", "test", 4, 100)
+		s := New(nil, cursorStore, firehose, 5*time.Second)
 		ctx := t.Context()
 
 		err := s.subscribe(ctx)
@@ -629,11 +629,12 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		cursorStore := mocks.NewMockCursorStore(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
 		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(42), nil)
-		dialer := mocks.NewMockDialer(ctrl)
+		dialer := firehosemocks.NewMockDialer(ctrl)
 		dialer.EXPECT().DialContext(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil, errors.New("expected dial error"))
-		s := New(nil, cursorStore, dialer, "wss://bsky.network", 4, 100, 5*time.Second, "test")
+		firehose := fh.NewFirehoseConn(dialer, "wss://bsky.network", "test", 4, 100)
+		s := New(nil, cursorStore, firehose, 5*time.Second)
 		ctx := t.Context()
 
 		err := s.subscribe(ctx)
@@ -645,9 +646,10 @@ func TestSubscriptionSubscribe(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		cursorStore := mocks.NewMockCursorStore(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
 		cursorStore.EXPECT().GetCursor(gomock.Any(), "://invalid-url").Return(int64(0), nil)
-		s := New(nil, cursorStore, nil, "://invalid-url", 4, 100, 5*time.Second, "test")
+		firehose := fh.NewFirehoseConn(nil, "://invalid-url", "test", 4, 100)
+		s := New(nil, cursorStore, firehose, 5*time.Second)
 		ctx := t.Context()
 
 		err := s.subscribe(ctx)
@@ -688,9 +690,10 @@ func TestSubscriptionListen(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		cursorStore := mocks.NewMockCursorStore(ctrl)
+		cursorStore := firehosemocks.NewMockCursorStore(ctrl)
 		cursorStore.EXPECT().GetCursor(gomock.Any(), "wss://bsky.network").Return(int64(0), errors.New("no db"))
-		s := New(nil, cursorStore, nil, "wss://bsky.network", 4, 100, 5*time.Second, "test")
+		firehose := fh.NewFirehoseConn(nil, "wss://bsky.network", "test", 4, 100)
+		s := New(nil, cursorStore, firehose, 5*time.Second)
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()

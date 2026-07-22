@@ -4,22 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/bluesky-social/indigo/repo"
-	"github.com/gorilla/websocket"
 
-	"github.com/kdwils/baldsky/atproto"
 	"github.com/kdwils/baldsky/logger"
+	fh "github.com/kdwils/baldsky/firehose"
 	"github.com/kdwils/baldsky/version"
 )
 
@@ -32,22 +27,9 @@ func NewProcessor(pipelines []Pipeline) *Processor {
 	return &Processor{pipelines: pipelines}
 }
 
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_dialer.go -package=mocks github.com/kdwils/baldsky/subscription Dialer
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_pipeline_store.go -package=mocks github.com/kdwils/baldsky/subscription PipelineStore
-//go:generate go run -tags tools go.uber.org/mock/mockgen -destination=mocks/mock_cursor_store.go -package=mocks github.com/kdwils/baldsky/subscription CursorStore
-
-type Dialer interface {
-	DialContext(ctx context.Context, urlStr string, requestHeader http.Header) (*websocket.Conn, *http.Response, error)
-}
-
 type PipelineStore interface {
 	InsertPost(ctx context.Context, feedName, uri, cid string) error
 	DeletePosts(ctx context.Context, uris []string) error
-}
-
-type CursorStore interface {
-	GetCursor(ctx context.Context, service string) (int64, error)
-	UpsertCursor(ctx context.Context, service string, cursor int64) error
 }
 
 type Pipeline struct {
@@ -201,30 +183,21 @@ func (p *Pipeline) MatchesPost(text string, langs []string, hasEmbed bool) bool 
 
 type Subscription struct {
 	*Processor
-	dialer         Dialer
-	service        string
-	cursorStore    CursorStore
-	concurrency    int
-	queueSize      int
+	firehose      *fh.FirehoseConn
+	cursorStore   fh.CursorStore
 	reconnectDelay time.Duration
-	userAgent      string
-	connected      atomic.Bool
 }
 
 func (s *Subscription) Connected() bool {
-	return s.connected.Load()
+	return s.firehose.Connected()
 }
 
-func New(pipelines []Pipeline, cursorStore CursorStore, dialer Dialer, service string, concurrency, queueSize int, reconnectDelay time.Duration, userAgent string) *Subscription {
+func New(pipelines []Pipeline, cursorStore fh.CursorStore, firehose *fh.FirehoseConn, reconnectDelay time.Duration) *Subscription {
 	return &Subscription{
 		Processor:      NewProcessor(pipelines),
-		dialer:         dialer,
-		service:        service,
+		firehose:       firehose,
 		cursorStore:    cursorStore,
-		concurrency:    concurrency,
-		queueSize:      queueSize,
 		reconnectDelay: reconnectDelay,
-		userAgent:      userAgent,
 	}
 }
 
@@ -329,51 +302,11 @@ func (s *Subscription) Listen(ctx context.Context) {
 }
 
 func (s *Subscription) subscribe(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-
-	cursor, err := s.cursorStore.GetCursor(ctx, s.service)
+	cursor, err := s.cursorStore.GetCursor(ctx, s.firehose.Service())
 	if err != nil {
 		return fmt.Errorf("getting cursor: %w", err)
 	}
-
-	firehoseURL, err := atproto.FirehoseURL(s.service, cursor)
-	if err != nil {
-		return fmt.Errorf("building firehose URL: %w", err)
-	}
-
-	names := make([]string, len(s.pipelines))
-	for i, p := range s.pipelines {
-		names[i] = p.Name
-	}
-
-	log.Info("connecting to firehose", "url", firehoseURL, "pipelines", names)
-
-	firehoseConn, _, err := s.dialer.DialContext(ctx, firehoseURL, http.Header{
-		"User-Agent": []string{s.userAgent},
-	})
-	if err != nil {
-		return fmt.Errorf("dialing firehose: %w", err)
-	}
-	defer firehoseConn.Close()
-
-	rsc := &events.RepoStreamCallbacks{
-		RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
-			return s.HandleCommit(ctx, evt)
-		},
-	}
-
-	sched := parallel.NewScheduler(
-		s.concurrency,
-		s.queueSize,
-		s.service,
-		rsc.EventHandler,
-	)
-
-	s.connected.Store(true)
-	defer s.connected.Store(false)
-
-	log.Info("firehose connected, consuming events")
-	return events.HandleRepoStream(ctx, firehoseConn, sched, log)
+	return s.firehose.Run(ctx, cursor, s.HandleCommit)
 }
 
 // HandleCommit processes an event and updates the firehose cursor.
@@ -384,7 +317,7 @@ func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSub
 	if evt == nil || s.cursorStore == nil {
 		return nil
 	}
-	if err := s.cursorStore.UpsertCursor(ctx, s.service, evt.Seq); err != nil {
+	if err := s.cursorStore.UpsertCursor(ctx, s.firehose.Service(), evt.Seq); err != nil {
 		return fmt.Errorf("upsert cursor: %w", err)
 	}
 
@@ -420,13 +353,13 @@ func (p *Pipeline) shouldInsert(actor string, post *bsky.FeedPost) bool {
 }
 
 func buildURI(repo, path string) string {
-	url := url.URL{
+	u := url.URL{
 		Scheme: "at",
 		Host:   repo,
 		Path:   path,
 	}
 
-	return url.String()
+	return u.String()
 }
 
 func BuildUserAgent(name, url string) string {

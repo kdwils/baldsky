@@ -7,16 +7,16 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/gorilla/websocket"
 
 	"github.com/kdwils/baldsky/config"
 	"github.com/kdwils/baldsky/db"
 	"github.com/kdwils/baldsky/db/gen"
 	"github.com/kdwils/baldsky/feed"
 	"github.com/kdwils/baldsky/logger"
+	fh "github.com/kdwils/baldsky/firehose"
 	"github.com/kdwils/baldsky/publisher"
 	"github.com/kdwils/baldsky/server"
 	"github.com/kdwils/baldsky/subscription"
@@ -34,6 +34,10 @@ var serveCmd = &cobra.Command{
 
 		if !cfg.Server.Enabled && !cfg.Subscription.Enabled && !cfg.Publisher.Enabled && !cfg.Worker.Enabled {
 			return fmt.Errorf("no roles enabled; nothing to do")
+		}
+
+		if (cfg.Publisher.Enabled || cfg.Worker.Enabled) && cfg.NATS.URL == "" {
+			return fmt.Errorf("nats.url is required when publisher or worker is enabled")
 		}
 
 		log := logger.New(cfg.Server.LogLevel)
@@ -95,20 +99,26 @@ var serveCmd = &cobra.Command{
 		go metricsSvc.Run(ctx)
 		defer metricsSvc.Close()
 
+		ua := subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL)
+
 		var sub *subscription.Subscription
 		var pub *publisher.Publisher
 		var w *worker.Worker
 
 		if cfg.Publisher.Enabled {
-			pub, err = publisher.New(
-				feedSvc,
+			firehose := fh.NewFirehoseConn(
 				websocket.DefaultDialer,
 				cfg.Subscription.Endpoint,
-				cfg.NATS,
+				ua,
 				cfg.Subscription.Concurrency,
 				cfg.Subscription.QueueSize,
+			)
+
+			pub, err = publisher.New(
+				feedSvc,
+				firehose,
+				cfg.NATS,
 				cfg.Subscription.ReconnectDelay,
-				subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
 			)
 			if err != nil {
 				return err
@@ -124,7 +134,7 @@ var serveCmd = &cobra.Command{
 
 			proc := subscription.NewProcessor(pipelines)
 
-			w, err = worker.New(proc, cfg.NATS, feedSvc)
+			w, err = worker.New(proc, cfg.Subscription.Endpoint, cfg.NATS, feedSvc)
 			if err != nil {
 				return err
 			}
@@ -137,15 +147,19 @@ var serveCmd = &cobra.Command{
 				return err
 			}
 
+			firehose := fh.NewFirehoseConn(
+				websocket.DefaultDialer,
+				cfg.Subscription.Endpoint,
+				ua,
+				cfg.Subscription.Concurrency,
+				cfg.Subscription.QueueSize,
+			)
+
 			sub = subscription.New(
 				pipelines,
 				feedSvc,
-				websocket.DefaultDialer,
-				cfg.Subscription.Endpoint,
-				cfg.Subscription.Concurrency,
-				cfg.Subscription.QueueSize,
+				firehose,
 				cfg.Subscription.ReconnectDelay,
-				subscription.BuildUserAgent(cfg.Server.UserAgent, cfg.Server.UserAgentURL),
 			)
 
 			go sub.Listen(ctx)
