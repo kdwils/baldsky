@@ -73,6 +73,7 @@ func initConfig() {
 	viper.SetDefault("nats.queue_group", "baldsky-workers")
 	viper.SetDefault("nats.reconnect_wait", "2s")
 	viper.SetDefault("nats.name_prefix", "baldsky")
+	viper.SetDefault("nats.max_payload", 10485760)
 	viper.SetDefault("publisher.enabled", false)
 	viper.SetDefault("publisher.flush_timeout", "5s")
 	viper.SetDefault("worker.enabled", false)

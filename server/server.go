@@ -180,7 +180,7 @@ func (s *Server) healthz() http.HandlerFunc {
 		}
 
 		status := http.StatusOK
-		if !dbOK || (!fhOK && !wOK) {
+		if !dbOK || (!fhOK && !wOK && (s.firehose != nil || len(s.workers) > 0)) {
 			status = http.StatusServiceUnavailable
 		}
 

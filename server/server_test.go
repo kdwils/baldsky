@@ -191,7 +191,7 @@ func TestHandleHealth(t *testing.T) {
 		assert.True(t, body["worker"])
 	})
 
-	t.Run("no active role returns 503", func(t *testing.T) {
+	t.Run("no active role returns ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -203,7 +203,7 @@ func TestHandleHealth(t *testing.T) {
 
 		srv.healthz()(w, req)
 
-		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
 
 		var body map[string]bool
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
