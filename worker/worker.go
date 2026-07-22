@@ -51,18 +51,20 @@ func (w *Worker) Run(ctx context.Context) {
 	log := logger.FromContext(ctx)
 	defer w.nc.Close()
 
+	procCtx := context.WithoutCancel(ctx)
+
 	sub, err := w.nc.QueueSubscribe(w.subject, w.queueGroup, func(msg *nats.Msg) {
 		var evt comatproto.SyncSubscribeRepos_Commit
 		if err := evt.UnmarshalCBOR(bytes.NewReader(msg.Data)); err != nil {
 			log.Error("failed to unmarshal event", "err", err)
 			return
 		}
-		if err := w.processor.ProcessEvent(ctx, &evt); err != nil {
+		if err := w.processor.ProcessEvent(procCtx, &evt); err != nil {
 			log.Error("failed to process event", "err", err)
 			return
 		}
 		if w.cursorStore != nil {
-			if err := w.cursorStore.UpsertCursor(ctx, w.service, evt.Seq); err != nil {
+			if err := w.cursorStore.UpsertCursor(procCtx, w.service, evt.Seq); err != nil {
 				log.Warn("failed to update cursor", "seq", evt.Seq, "err", err)
 			}
 		}

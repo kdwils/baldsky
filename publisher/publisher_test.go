@@ -41,6 +41,10 @@ func TestCBORRoundTrip(t *testing.T) {
 		commitCid, err := cid.Decode("bafyreia2y6udp7scevz4z3zpu7je76yvr5n5rfqndww3bk5rm3v5r5tbjy")
 		require.NoError(t, err)
 
+		opCid, err := cid.Decode("bafyreia2y6udp7scevz4z3zpu7je76yvr5n5rfqndww3bk5rm3v5r5tbjy")
+		require.NoError(t, err)
+		opCidLink := lexutil.LexLink(opCid)
+
 		original := &comatproto.SyncSubscribeRepos_Commit{
 			Repo:   "did:plc:test123",
 			Seq:    42,
@@ -48,6 +52,18 @@ func TestCBORRoundTrip(t *testing.T) {
 			Commit: lexutil.LexLink(commitCid),
 			TooBig: false,
 			Time:   "2024-01-01T00:00:00Z",
+			Blocks: lexutil.LexBytes([]byte{0x00, 0x01, 0x02, 0x03}),
+			Ops: []*comatproto.SyncSubscribeRepos_RepoOp{
+				{
+					Action: "create",
+					Cid:    &opCidLink,
+					Path:   "app.bsky.feed.post/3jqkl2abc7k2a",
+				},
+				{
+					Action: "delete",
+					Path:   "app.bsky.feed.post/3jqkl2abc7k2b",
+				},
+			},
 		}
 
 		var buf bytes.Buffer
@@ -63,6 +79,15 @@ func TestCBORRoundTrip(t *testing.T) {
 		assert.Equal(t, original.Seq, decoded.Seq)
 		assert.Equal(t, original.Rev, decoded.Rev)
 		assert.Equal(t, original.Time, decoded.Time)
+		assert.Equal(t, original.TooBig, decoded.TooBig)
+		assert.Equal(t, original.Blocks, decoded.Blocks)
+		require.Len(t, decoded.Ops, 2)
+		assert.Equal(t, "create", decoded.Ops[0].Action)
+		assert.Equal(t, "app.bsky.feed.post/3jqkl2abc7k2a", decoded.Ops[0].Path)
+		assert.Equal(t, *original.Ops[0].Cid, *decoded.Ops[0].Cid)
+		assert.Equal(t, "delete", decoded.Ops[1].Action)
+		assert.Equal(t, "app.bsky.feed.post/3jqkl2abc7k2b", decoded.Ops[1].Path)
+		assert.Nil(t, decoded.Ops[1].Cid)
 	})
 
 	t.Run("marshal empty event produces valid CBOR", func(t *testing.T) {

@@ -75,7 +75,6 @@ type PipelineConfig struct {
 	RequireMedia    bool     `mapstructure:"require_media"`
 	BlockDIDs       []string `mapstructure:"block_dids"`
 	Enabled         bool     `mapstructure:"enabled"`
-	IgnoreBots      bool     `mapstructure:"ignore_bots"`
 	CollectionName  string   `mapstructure:"collection_name"`
 	Languages       []string `mapstructure:"languages"`
 	LinkLabel       string   `mapstructure:"link_label"`

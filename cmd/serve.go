@@ -154,7 +154,7 @@ var serveCmd = &cobra.Command{
 			}
 		}
 
-		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled {
+		if cfg.Subscription.Enabled && !cfg.Publisher.Enabled && !cfg.Worker.Enabled {
 			pipelines, err := buildPipelines(cfg, feedSvc)
 			if err != nil {
 				return err

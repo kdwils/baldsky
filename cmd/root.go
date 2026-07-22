@@ -70,7 +70,7 @@ func initConfig() {
 	viper.SetDefault("auth.password", "")
 	viper.SetDefault("nats.url", "")
 	viper.SetDefault("nats.subject", "firehose.events")
-	viper.SetDefault("nats.queue_group", "")
+	viper.SetDefault("nats.queue_group", "baldsky-workers")
 	viper.SetDefault("nats.reconnect_wait", "2s")
 	viper.SetDefault("nats.name_prefix", "baldsky")
 	viper.SetDefault("publisher.enabled", false)
