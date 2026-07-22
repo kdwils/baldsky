@@ -31,7 +31,7 @@ func TestBuildUserAgent(t *testing.T) {
 
 	t.Run("empty url", func(t *testing.T) {
 		got := BuildUserAgent("myapp", "")
-		want := "myapp/dev (+)"
+		want := "myapp/dev"
 		assert.Equal(t, want, got)
 	})
 }
