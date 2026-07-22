@@ -314,7 +314,7 @@ func (s *Subscription) HandleCommit(ctx context.Context, evt *comatproto.SyncSub
 	if err := s.ProcessEvent(ctx, evt); err != nil {
 		return err
 	}
-	if evt == nil || s.cursorStore == nil {
+	if s.cursorStore == nil {
 		return nil
 	}
 	if err := s.cursorStore.UpsertCursor(ctx, s.firehose.Service(), evt.Seq); err != nil {
