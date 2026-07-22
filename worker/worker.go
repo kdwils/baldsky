@@ -70,6 +70,7 @@ func (w *Worker) Run(ctx context.Context) {
 		if w.cursorStore != nil {
 			if err := w.cursorStore.UpsertCursor(procCtx, w.service, evt.Seq); err != nil {
 				log.Warn("failed to update cursor", "seq", evt.Seq, "service", w.service, "err", err)
+				return
 			}
 		}
 
