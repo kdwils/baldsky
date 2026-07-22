@@ -20,6 +20,7 @@ type Publisher struct {
 	nc             *nats.Conn
 	subject        string
 	reconnectDelay time.Duration
+	flushTimeout   time.Duration
 }
 
 func New(
@@ -27,8 +28,13 @@ func New(
 	firehose *fh.FirehoseConn,
 	natsCfg config.NATSConfig,
 	reconnectDelay time.Duration,
+	flushTimeout time.Duration,
 ) (*Publisher, error) {
-	nc, err := nats.Connect(natsCfg.URL, nats.Name("baldsky-publisher"))
+	nc, err := nats.Connect(natsCfg.URL,
+		nats.Name("baldsky-publisher"),
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2*time.Second),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("connect to NATS: %w", err)
 	}
@@ -38,6 +44,7 @@ func New(
 		nc:             nc,
 		subject:        natsCfg.Subject,
 		reconnectDelay: reconnectDelay,
+		flushTimeout:   flushTimeout,
 	}, nil
 }
 
@@ -85,6 +92,10 @@ func (p *Publisher) handleCommit(ctx context.Context, evt *comatproto.SyncSubscr
 
 	if err := p.nc.Publish(p.subject, buf.Bytes()); err != nil {
 		return fmt.Errorf("publish: %w", err)
+	}
+
+	if err := p.nc.FlushTimeout(p.flushTimeout); err != nil {
+		return fmt.Errorf("flush: %w", err)
 	}
 
 	if err := p.cursorStore.UpsertCursor(ctx, p.firehose.Service(), evt.Seq); err != nil {

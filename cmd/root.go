@@ -68,10 +68,11 @@ func initConfig() {
 	viper.SetDefault("auth.pds", "https://bsky.social")
 	viper.SetDefault("auth.identifier", "")
 	viper.SetDefault("auth.password", "")
-	viper.SetDefault("nats.url", "nats://localhost:4222")
+	viper.SetDefault("nats.url", "")
 	viper.SetDefault("nats.subject", "firehose.events")
-	viper.SetDefault("nats.queue_group", "baldsky-workers")
+	viper.SetDefault("nats.queue_group", "")
 	viper.SetDefault("publisher.enabled", false)
+	viper.SetDefault("publisher.flush_timeout", "5s")
 	viper.SetDefault("worker.enabled", false)
 
 	viper.SetEnvPrefix("BALDSKY")

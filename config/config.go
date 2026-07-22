@@ -25,7 +25,8 @@ type NATSConfig struct {
 }
 
 type PublisherConfig struct {
-	Enabled bool `mapstructure:"enabled"`
+	Enabled      bool          `mapstructure:"enabled"`
+	FlushTimeout time.Duration `mapstructure:"flush_timeout"`
 }
 
 type WorkerConfig struct {

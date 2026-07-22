@@ -119,6 +119,7 @@ var serveCmd = &cobra.Command{
 				firehose,
 				cfg.NATS,
 				cfg.Subscription.ReconnectDelay,
+				cfg.Publisher.FlushTimeout,
 			)
 			if err != nil {
 				return err

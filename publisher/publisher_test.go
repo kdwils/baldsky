@@ -28,7 +28,7 @@ func TestNew(t *testing.T) {
 			URL:        "nats://invalid-host:9999",
 			Subject:    "firehose.events",
 			QueueGroup: "baldsky-workers",
-		}, 5*time.Second)
+		}, 5*time.Second, 5*time.Second)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to NATS")
